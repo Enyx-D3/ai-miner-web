@@ -1,0 +1,13 @@
+import { readFileSync, existsSync } from "node:fs";
+const read=(p)=>readFileSync(new URL(`../${p}`,import.meta.url),"utf8");
+const required=["src/lib/brain2/asifReaderCore.ts","src/lib/brain2/store.ts","src/lib/brain2/p2pSync.ts","src/components/brain2/Brain2Provider.tsx","src/components/brain2/Brain2PairingQr.tsx"];
+for(const p of required)if(!existsSync(new URL(`../${p}`,import.meta.url)))throw new Error(`Missing V9 artifact ${p}`);
+const contracts=read("src/lib/brain2/contracts.ts"),reader=read("src/lib/brain2/asifReaderCore.ts"),store=read("src/lib/brain2/store.ts"),p2p=read("src/lib/brain2/p2pSync.ts"),provider=read("src/components/brain2/Brain2Provider.tsx"),jobs=read("src/lib/brain2/jobs.ts");
+for(const invariant of ["BRAIN2_SCHEMA_VERSION = 9","B2_STORAGE_V9_ASIF_READER_BOUNDED_HOT_SET","ASIF_READER_RAPIDRETRIEVE_V9"])if(!contracts.includes(invariant))throw new Error(`Missing V9 contract ${invariant}`);
+for(const invariant of ["ASIF_READER_CORE_VERSION","owner:\"ASIF_READER\"","retrievalOwner:\"RAPIDRETRIEVE\"","runASIFReaderQuery","verifyASIFEvidenceBlock"])if(!reader.includes(invariant))throw new Error(`Missing Reader invariant ${invariant}`);
+for(const invariant of ["runASIFReaderQuery(adapter","searchDocsForDelta","applyDeltaPayloadToHotSnapshot","scheduleDerivedPatternsRefresh","ingestExtensionBatch"])if(!store.includes(invariant))throw new Error(`Missing V9 store behavior ${invariant}`);
+if(store.includes("if(accepted.length){await reloadBrain2FromDisk();setTimeout(()=>{void rebuildPersistentSearchIndex()"))throw new Error("Remote mutation path still performs full reindex/reload");
+if(!p2p.includes("subscribeBrain2(flushConnectedPeers)")||p2p.includes("deltaTimer"))throw new Error("P2P delta flush is not event-driven");
+if(!provider.includes("ingestExtensionBatch"))throw new Error("Extension batches are still ingested record-by-record");
+if(!jobs.includes("asif-reader-rapidretrieve-v9"))throw new Error("B2JOB is not bound to the V9 Reader evidence policy");
+console.log("V9 architecture acceptance PASS: .ASIF Reader/RapidRetrieve owns selective retrieval; remote deltas update Reader index incrementally; P2P delta flush is event-driven; extension ingestion is batched.");

@@ -1,0 +1,12 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import process from "node:process";
+const root=process.cwd(),dist=join(root,".v8-qr-test-dist");rmSync(dist,{recursive:true,force:true});mkdirSync(dist,{recursive:true});
+execFileSync(process.platform==="win32"?"tsc.cmd":"tsc",["src/lib/brain2/qrCode.ts","--target","ES2022","--module","NodeNext","--moduleResolution","NodeNext","--skipLibCheck","--outDir",dist,"--pretty","false"],{stdio:"inherit"});
+const {makeQrMatrix}=await import(pathToFileURL(join(dist,"qrCode.js")));
+const value="https://brain2.example/devices?pair=pair_abcdefghijklmnopqrstuvwxyz123456&peer=dev_a&expires=2026-08-21T03%3A00%3A00Z";
+const a=makeQrMatrix(value),b=makeQrMatrix(value);if(a.size<21||a.size!==a.modules.length||a.modules.some(r=>r.length!==a.size))throw new Error("QR matrix shape invalid");if(JSON.stringify(a)!==JSON.stringify(b))throw new Error("QR matrix is not deterministic");
+const finder=(cx,cy)=>a.modules[cy][cx]&&a.modules[cy-3][cx-3]&&a.modules[cy+3][cx+3]&&!a.modules[cy-2][cx-2];if(!finder(3,3)||!finder(a.size-4,3)||!finder(3,a.size-4))throw new Error("QR finder patterns missing");
+console.log(`V8 QR smoke PASS: deterministic standards-based pairing QR matrix ${a.size}x${a.size} for single-use external-device invitation.`);rmSync(dist,{recursive:true,force:true});

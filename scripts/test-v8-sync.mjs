@@ -1,0 +1,25 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import process from "node:process";
+const root=process.cwd();const dist=join(root,".v8-sync-test-dist");rmSync(dist,{recursive:true,force:true});
+execFileSync(process.platform==="win32"?"tsc.cmd":"tsc",["-p","tsconfig.v8-sync-fixtures.json","--pretty","false"],{stdio:"inherit"});
+const protocol=await import(pathToFileURL(join(dist,"lib/brain2/syncProtocol.js"))); // output preserves src subroot below common source dir
+const server=await import(pathToFileURL(join(dist,"server/brain2/syncServer.js")));
+const temp=join(root,".v8-sync-smoke-data");rmSync(temp,{recursive:true,force:true});mkdirSync(temp,{recursive:true});process.env.BRAIN2_SYNC_DATA_DIR=temp;
+const payload={version:1,operation:"UPSERT_BUNDLE",primaryTable:"ticks",writes:{ticks:[{id:"tick_1",title:"A"}]}};
+const payloadHash=await protocol.hashPayload(payload);const base={protocolVersion:2,memoryRoot:"b2m_test",originDeviceId:"dev_a",originSequence:1,type:"CREATE",entityType:"tick",entityId:"tick_1",payloadHash,parentMutationIds:[]};const hash=await protocol.hashMutation(base);const mutation={id:`mut_${hash.slice(0,24)}`,createdAt:new Date().toISOString(),deviceId:"dev_a",hash,sequence:1,schemaVersion:8,...base,payload,replicationStatus:"LOCAL_COMMITTED",sourceTransport:"LOCAL"};
+let check=await protocol.verifyMutationEnvelope(mutation);if(!check.ok)throw new Error(`Valid mutation rejected: ${check.reason}`);
+const manifest=await protocol.hashMutationManifest([mutation]);if(!manifest)throw new Error("Mutation manifest missing");
+check=await protocol.verifyMutationEnvelope({...mutation,payload:{...payload,writes:{ticks:[{id:"tick_1",title:"tampered"}]}}});if(check.ok)throw new Error("Tampered mutation accepted");
+const tamperedManifest=await protocol.hashMutationManifest([{...mutation,payloadHash:"bad"}]);if(tamperedManifest===manifest)throw new Error("Manifest did not change after mutation tamper");
+const chunks=protocol.packBootstrapRecords(Array.from({length:200},(_,i)=>({id:`m${i}`,text:"x".repeat(1000)})));if(chunks.length<2)throw new Error("Bootstrap chunking did not bound payloads");const chunkHash=await protocol.hashBootstrapChunk("b2m_test","messages",0,chunks[0]);const changedChunkHash=await protocol.hashBootstrapChunk("b2m_test","messages",0,[...chunks[0],{id:"tamper"}]);if(chunkHash===changedChunkHash)throw new Error("Bootstrap chunk hash did not detect tamper");
+const a=await server.registerSyncDevice({deviceId:"dev_a",spaceId:"b2m_test",name:"A",kind:"web"});
+let rejected=false;try{await server.registerSyncDevice({deviceId:"dev_b",spaceId:"b2m_test",name:"B",kind:"web"});}catch{rejected=true}if(!rejected)throw new Error("Second device joined without pairing token");
+const pair=await server.createPairingToken("dev_a",a.deviceToken);const b=await server.registerSyncDevice({deviceId:"dev_b",name:"B",kind:"web",joinToken:pair.token});if(b.spaceId!=="b2m_test")throw new Error("Pairing did not preserve memory root");
+rejected=false;try{await server.registerSyncDevice({deviceId:"dev_c",name:"C",kind:"web",joinToken:pair.token});}catch{rejected=true}if(!rejected)throw new Error("Pairing token was reusable");
+const pair2=await server.createPairingToken("dev_a",a.deviceToken);const b2=await server.registerSyncDevice({deviceId:"dev_b",name:"B repaired",kind:"web",joinToken:pair2.token});if(!b2.repaired||b2.deviceToken===b.deviceToken)throw new Error("Fresh QR did not rotate/recover existing device credential");
+await server.postSyncSignal({fromDeviceId:"dev_a",deviceToken:a.deviceToken,toDeviceId:"dev_b",kind:"offer",payload:{sdp:"test"}});const pulled=await server.pullSyncSignals({deviceId:"dev_b",deviceToken:b2.deviceToken});if(pulled.length!==1||pulled[0].kind!=="offer")throw new Error("Signal mailbox failed");if((await server.pullSyncSignals({deviceId:"dev_b",deviceToken:b2.deviceToken})).length)throw new Error("Consumed signal redelivered");
+console.log("V8 sync smoke PASS: hashed/tamper-proof mutation envelope + batch manifest, bounded bootstrap chunks, same-root single-use pairing, credentialed signaling, consume-once mailbox.");
+rmSync(temp,{recursive:true,force:true});rmSync(dist,{recursive:true,force:true});

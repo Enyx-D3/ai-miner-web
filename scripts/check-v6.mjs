@@ -1,0 +1,14 @@
+import fs from "node:fs";
+import { execFileSync } from "node:child_process";
+const required=["src/lib/brain2/databox.ts","src/lib/brain2/reasoning.ts","src/lib/brain2/retrievalRouter.ts","src/lib/brain2/patternLab.ts","extension/queue_db.js","scripts/test-v6-regressions.mjs","scripts/bench-v6-scale.mjs"];
+for(const file of required)if(!fs.existsSync(file))throw new Error(`Missing V6 artifact: ${file}`);
+const contracts=fs.readFileSync("src/lib/brain2/contracts.ts","utf8");for(const invariant of ["BRAIN2_SCHEMA_VERSION = 6","B2_DATABOX_V1","B2_REASONING_V1","B2_RETRIEVAL_V6"])if(!contracts.includes(invariant))throw new Error(`V6 contract missing ${invariant}`);
+const store=fs.readFileSync("src/lib/brain2/store.ts","utf8");for(const invariant of ["const DB_VERSION = 6","patternTests","portableExpertise","databoxes","retrievalTelemetry","atomicPut("])if(!store.includes(invariant))throw new Error(`V6 store invariant missing ${invariant}`);
+const jobs=fs.readFileSync("src/lib/brain2/jobs.ts","utf8");for(const invariant of ["version:2","B2DATABOX","databoxMatches","brain2-routed-bounded-v6"])if(!jobs.includes(invariant))throw new Error(`V6 B2JOB invariant missing ${invariant}`);
+const patterns=fs.readFileSync("src/lib/brain2/patternLab.ts","utf8");for(const invariant of ["L6_GENERALIZED","TRANSFER","FALSIFICATION","Portable Expertise requires"])if(!patterns.includes(invariant))throw new Error(`Pattern Lab gate missing ${invariant}`);
+const queue=fs.readFileSync("extension/queue_db.js","utf8");if(!queue.includes("indexedDB.open")||!queue.includes("byRecordId"))throw new Error("Durable IndexedDB queue missing");
+const sw=fs.readFileSync("extension/service_worker.js","utf8");if(!sw.includes('importScripts("queue_db.js")')||sw.includes("slice(-MAX_QUEUE)"))throw new Error("Extension queue binding/loss invariant failed");
+execFileSync("tsc",["-p","tsconfig.v6-core.json","--pretty","false"],{stdio:"inherit"});
+execFileSync(process.execPath,["scripts/check-brain2.mjs"],{stdio:"inherit"});
+execFileSync(process.execPath,["scripts/check-extension.mjs"],{stdio:"inherit"});
+console.log("Brain2 AI Miner V6 static acceptance PASS: canonical V6 contracts + Databox + Pattern Lab + reasoning + durable queue + core typecheck.");

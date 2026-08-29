@@ -1,0 +1,11 @@
+import fs from "node:fs";import path from "node:path";import {execFileSync} from "node:child_process";import {createRequire} from "node:module";
+const root=process.cwd(), out=path.join(root,".v9-atom-test-dist");fs.rmSync(out,{recursive:true,force:true});fs.mkdirSync(out,{recursive:true});
+execFileSync("tsc",["--target","ES2022","--module","commonjs","--moduleResolution","node","--skipLibCheck","--esModuleInterop","--outDir",out,"src/lib/brain2/contracts.ts","src/lib/brain2/identity.ts","src/lib/brain2/atomizationStack.ts","src/lib/brain2/atomizer.ts"],{stdio:"inherit"});
+const require=createRequire(import.meta.url);const {atomizeMessage}=require(path.join(out,"atomizer.js"));const {buildB250LocalChunk,assessAtomContextSufficiency,B250_TOKEN_CAP}=require(path.join(out,"atomizationStack.js"));
+function ok(v,m){if(!v)throw new Error(m)}
+const atoms=atomizeMessage("Going forward, Brain2 model is Qwen3-0.6B; the release must preserve history. If the model changes, keep the old value as historical evidence.","user");
+ok(atoms.length>=2,"G should split independently changeable clauses");ok(atoms.every(a=>a.atomizationArm==="G_ADAPTIVE_HETEROGENEOUS"),"G arm missing");ok(atoms.every(a=>a.fallbackPolicy==="B_250_CHUNK"),"B fallback policy missing");ok(atoms.every(a=>typeof a.intrinsicSufficiency==="number"),"intrinsic sufficiency missing");
+const long=Array.from({length:400},(_,i)=>`tok${i}`).join(" ");const chunk=buildB250LocalChunk(long,1500,1510);ok(chunk.tokenCount===B250_TOKEN_CAP,"B250 must cap at exactly 250 lexical tokens");
+const weak=assessAtomContextSufficiency({query:"exact deployment port and rollback",evidence:[{text:"deployment notes",score:1.2,type:"atom",intrinsicSufficiency:.5}]});ok(weak.state!=="SUFFICIENT","thin atom context should back off");
+const strong=assessAtomContextSufficiency({query:"deployment port",evidence:[{text:"deployment port is 8787",score:6,type:"truth",truthStatus:"CURRENT",intrinsicSufficiency:.9},{text:"deployment uses port 8787",score:5,type:"atom",intrinsicSufficiency:.9}]});ok(strong.state==="SUFFICIENT","strong atom context should stay compact");
+console.log("V9 G+F+I+B250 atomization stack tests PASS");fs.rmSync(out,{recursive:true,force:true});

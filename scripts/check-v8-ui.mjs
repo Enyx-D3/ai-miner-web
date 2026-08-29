@@ -1,0 +1,12 @@
+import { readFileSync } from 'node:fs';
+const workspace=readFileSync('src/features/brain2/Brain2Workspace.tsx','utf8');
+const css=readFileSync('src/app/globals.css','utf8');
+const sidebar=readFileSync('src/components/Sidebar/AppSidebar.tsx','utf8');
+const requiredWorkspace=['b2-billboard','Reporter','Mission pipeline','Information refinery','Interpretation firewall','Operator console','Workers & devices','LOCAL MEMORY LIVE'];
+const requiredCss=['--cyan:','--violet:','.b2-billboard','.b2-control-card','.b2-refinery-flow','.b2-worker','.b2-operator-console'];
+const requiredSidebar=['Mission Control','Control room','LOCAL'];
+for(const token of requiredWorkspace) if(!workspace.includes(token)) throw new Error(`V8 UI missing workspace token: ${token}`);
+for(const token of requiredCss) if(!css.includes(token)) throw new Error(`V8 UI missing CSS token: ${token}`);
+for(const token of requiredSidebar) if(!sidebar.includes(token)) throw new Error(`V8 UI missing sidebar token: ${token}`);
+if(workspace.includes('Send instruction to Brain2Shot')) throw new Error('Legacy Brain2Shot UI copy detected');
+console.log('V8 UI acceptance PASS: mission-control billboard + Reporter + pipeline + refinery + node freshness + interpretation firewall + honest operator console.');

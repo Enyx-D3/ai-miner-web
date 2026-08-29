@@ -1,0 +1,6 @@
+import { NextResponse } from "next/server";
+import { postSyncSignal, pullSyncSignals } from "@/server/brain2/syncServer";
+export const runtime="nodejs";
+function token(request:Request,fallback?:string){return request.headers.get("x-brain2-device-token")||request.headers.get("authorization")?.replace(/^Bearer\s+/i,"")||fallback||"";}
+export async function GET(request:Request){try{const url=new URL(request.url);const deviceId=url.searchParams.get("deviceId")||"";return NextResponse.json({signals:await pullSyncSignals({deviceId,deviceToken:token(request,url.searchParams.get("deviceToken")||undefined),consume:url.searchParams.get("consume")!=="0",limit:Number(url.searchParams.get("limit")||100)})});}catch(error){return NextResponse.json({error:error instanceof Error?error.message:String(error)},{status:400});}}
+export async function POST(request:Request){try{const body=await request.json();return NextResponse.json({signal:await postSyncSignal({fromDeviceId:String(body.fromDeviceId||""),deviceToken:token(request,body.deviceToken),toDeviceId:String(body.toDeviceId||""),kind:String(body.kind||""),payload:body.payload,ttlSeconds:Number(body.ttlSeconds||120)})},{status:201});}catch(error){return NextResponse.json({error:error instanceof Error?error.message:String(error)},{status:400});}}

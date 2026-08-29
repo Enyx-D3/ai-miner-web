@@ -1,0 +1,16 @@
+import fs from "node:fs";
+const sync=fs.readFileSync("src/server/brain2/syncServer.ts","utf8");
+const p2p=fs.readFileSync("src/lib/brain2/p2pSync.ts","utf8");
+const workspace=fs.readFileSync("src/features/brain2/Brain2Workspace.tsx","utf8");
+const provider=fs.readFileSync("src/components/brain2/Brain2Provider.tsx","utf8");
+const pkg=JSON.parse(fs.readFileSync("package.json","utf8"));
+const req=(v,m)=>{if(!v)throw new Error(m)};
+req(pkg.dependencies?.["@netlify/blobs"],"Netlify Blobs dependency missing");
+req(sync.includes('NETLIFY_BLOBS_CONTEXT')&&sync.includes('brain2-sync-v4'),"Netlify persistent sync store missing");
+req(sync.includes('getStore({name:"brain2-sync-v4",consistency:"strong"}'),"Netlify sync store is not strong-consistency");
+req(sync.includes('existing.space_id!==spaceId'),"re-pair must reject cross-memory device reuse");
+req(sync.includes('repaired:true'),"fresh QR credential rotation/recovery missing");
+req(p2p.includes('clearLocalCredential();await enableBrain2P2P()'),"stale inviter credential self-heal missing");
+req(workspace.includes('await joinBrain2P2P(incoming.token)'),"QR acceptance must always consume fresh pairing token");
+req(provider.includes('BRAIN2_EXTENSION_DISCONNECTED')&&provider.includes('heartbeatTimer'),"real-time extension disconnect/heartbeat state missing");
+console.log("V9.0.13 Netlify persistent P2P + extension realtime status acceptance PASS");

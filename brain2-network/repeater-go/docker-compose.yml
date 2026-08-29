@@ -1,0 +1,28 @@
+services:
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "dev-only-change-me"]
+    volumes:
+      - b2net-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "dev-only-change-me", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  b2-network:
+    build: .
+    environment:
+      LISTEN_ADDR: ":8080"
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: "dev-only-change-me"
+      MAX_RELAY_PAYLOAD_BYTES: "65536"
+      RATE_LIMIT_PER_MINUTE: "600"
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  b2net-redis:

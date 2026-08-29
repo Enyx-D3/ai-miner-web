@@ -1,0 +1,6 @@
+import { NextResponse } from "next/server";
+import { listSyncDevices, registerSyncDevice } from "@/server/brain2/syncServer";
+export const runtime="nodejs";
+function token(request:Request){return request.headers.get("x-brain2-device-token")||request.headers.get("authorization")?.replace(/^Bearer\s+/i,"")||"";}
+export async function GET(request:Request){try{const url=new URL(request.url);const deviceId=url.searchParams.get("deviceId")||"";return NextResponse.json({devices:await listSyncDevices(deviceId,token(request))});}catch(error){return NextResponse.json({error:error instanceof Error?error.message:String(error)},{status:400});}}
+export async function POST(request:Request){try{const body=await request.json();return NextResponse.json(await registerSyncDevice({deviceId:String(body.deviceId||""),spaceId:body.spaceId?String(body.spaceId):undefined,name:String(body.name||"Brain2 device"),kind:String(body.kind||"web"),joinToken:body.joinToken?String(body.joinToken):undefined,publicKey:body.publicKey?String(body.publicKey):undefined}),{status:201});}catch(error){return NextResponse.json({error:error instanceof Error?error.message:String(error)},{status:400});}}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Brain2 AI Miner</title>
+<style>
+:root{color-scheme:light}*{box-sizing:border-box}body{font:13px Inter,system-ui,sans-serif;margin:0;color:#07152d;background:#fff;min-width:320px}header{padding:16px 16px 10px;border-bottom:1px solid #e8edf5}h1{font-size:18px;margin:0 0 4px}.muted{color:#667085;font-size:11px;line-height:1.45}.tabs{display:grid;grid-template-columns:1fr 1fr;padding:8px;background:#f6f8fb;border-bottom:1px solid #e8edf5;gap:6px}.tab{border:0;border-radius:10px;padding:10px;font-weight:850;background:transparent;color:#667085;cursor:pointer}.tab.active{background:#fff;color:#075dff;box-shadow:0 1px 3px rgba(16,24,40,.12)}.panel{display:none;padding:14px 16px 18px}.panel.active{display:block}.card{margin:0 0 12px;padding:12px;border:1px solid #e5eaf2;border-radius:12px;background:#f8fbff}.provider{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #edf1f7}.provider:last-child{border-bottom:0}.pill{font-size:10px;font-weight:850;padding:4px 8px;border-radius:999px;background:#eef4ff;color:#1849a9}.pill.ok{background:#ecfdf3;color:#067647}.pill.warn{background:#fffaeb;color:#b54708}.pill.bad{background:#fef3f2;color:#b42318}.ok{color:#067647}.bad{color:#b42318}.warn{color:#b54708}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#16a34a;margin-right:5px}.row{display:flex;gap:8px;margin-top:8px}button{border:0;border-radius:10px;padding:10px 12px;font-weight:800;cursor:pointer;background:#075dff;color:#fff}button.secondary{background:#eef4ff;color:#1849a9}button.ghost{background:#f2f4f7;color:#344054}.wide{width:100%}input{width:100%;padding:9px 10px;border:1px solid #d0d5dd;border-radius:10px}.label{font-size:10px;font-weight:900;letter-spacing:.08em;color:#667085}.metric{font-size:18px;font-weight:900}.steps{margin:7px 0 0;padding-left:18px;color:#667085;font-size:11px;line-height:1.55}.statusline{display:flex;justify-content:space-between;gap:10px;align-items:center}.footer{margin:0 16px 14px;padding-top:10px;border-top:1px solid #edf1f7;min-height:28px}</style>
+</head>
+<body>
+<header><h1>Brain2 AI Miner</h1><div class="muted">ChatGPT · Claude · Gemini</div></header>
+<div class="tabs" role="tablist"><button id="tabConnection" class="tab active" role="tab" aria-selected="true">Connection</button><button id="tabCapture" class="tab" role="tab" aria-selected="false">Capture</button></div>
+<section id="panelConnection" class="panel active" role="tabpanel">
+  <div class="card"><div class="label">BRAIN2 CONNECTION</div><div id="website" style="margin-top:7px">Checking…</div></div>
+  <button id="connectionAction" class="wide">Connect to active Brain2 tab</button>
+  <div class="row"><button id="retry" class="secondary wide" hidden>Retry handshake</button><button id="open" class="ghost wide">Open Brain2</button></div>
+  <div class="card" style="margin-top:12px"><div class="label">HOW IT CONNECTS</div><ol class="steps"><li>Open Brain2 AI Miner in a browser tab.</li><li>Keep that tab active and press <b>Connect</b> once.</li><li>Approve Chrome's site permission.</li><li>The extension automatically continues the bridge + nonce handshake.</li><li>When complete, this tab changes to <b>CONNECTED</b>. No second click is required.</li></ol></div>
+  <div id="connectionDiag" class="card muted">No handshake diagnostics yet.</div>
+</section>
+<section id="panelCapture" class="panel" role="tabpanel">
+  <div class="card"><div class="statusline"><div><div class="label">CAPTURE QUEUE</div><div id="queue" class="metric">—</div></div><div id="vault" class="muted">Checking encryption…</div></div><div id="queueHelp" class="muted" style="margin-top:6px">Queued turns remain local until Brain2 ACKs them.</div></div>
+  <div class="card"><div class="label">PROVIDER HEALTH</div><div id="providers"></div></div>
+  <div class="row"><button id="testCapture" class="secondary wide">Capture latest turn (test)</button></div>
+  <div class="row"><button id="send" class="secondary" style="flex:1">Send queued now</button><button id="clearQueue" class="ghost" style="flex:1">Clear queue</button></div>
+  <div id="legacyVault" class="card" hidden style="margin-top:12px"><div class="label">LEGACY PASSPHRASE VAULT</div><div class="muted" style="margin:5px 0 8px">Unlock once per browser session.</div><input id="pass" type="password" placeholder="Capture vault passphrase"><div class="row"><button id="unlock">Unlock</button><button id="lock" class="secondary">Lock</button></div></div>
+</section>
+<div id="message" class="muted footer"></div>
+<script src="sidepanel.js"></script>
+</body>
+</html>

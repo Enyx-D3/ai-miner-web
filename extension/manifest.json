@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Brain2 AI Miner",
+  "version": "0.8.6",
+  "minimum_chrome_version": "116",
+  "description": "Captures completed ChatGPT, Claude, and Gemini turns and connects to Brain2 with a real-time persistent two-tab side panel.",
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs",
+    "alarms",
+    "activeTab",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "service_worker.js"
+  },
+  "action": {
+    "default_title": "Brain2 AI Miner"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "capture.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
