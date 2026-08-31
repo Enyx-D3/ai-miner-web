@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap");
 
 @custom-variant dark (&:is(.dark *));
 
@@ -8,7 +9,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-inter);
-  --font-display: var(--font-inter-tight);
+  --font-display: var(--font-inter);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -46,8 +47,8 @@
 }
 
 :root {
-  --font-inter: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-inter-tight: "Arial Narrow", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-inter: var(--font-geist-sans), "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-inter-tight: var(--font-geist-sans), "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --radius: 0.875rem;
   --background: #ffffff;
   --foreground: #07152d;
@@ -108,8 +109,9 @@
 
 @layer base {
   * { @apply border-border outline-ring/50; }
-  html { scroll-behavior: smooth; }
-  body { @apply bg-background text-foreground; font-family: var(--font-inter), system-ui, sans-serif; background:radial-gradient(circle at 75% -10%,rgba(32,189,245,.08),transparent 28%),radial-gradient(circle at 20% 0%,rgba(119,92,255,.06),transparent 24%),#fff; }
+  html { scroll-behavior: smooth; font-weight: 400; }
+  body { @apply bg-background text-foreground; font-family: var(--font-inter), system-ui, sans-serif; font-weight: 400; background:radial-gradient(circle at 75% -10%,rgba(32,189,245,.08),transparent 28%),radial-gradient(circle at 20% 0%,rgba(119,92,255,.06),transparent 24%),#fff; }
+  h1, h2, h3, h4, h5, h6 { font-weight: 400; }
 }
 
 .font-tight { font-family: var(--font-inter-tight), system-ui, sans-serif; }
@@ -251,3 +253,48 @@
 .b2-workspace-view [data-slot="card-header"].border-b { background:linear-gradient(180deg,rgba(249,252,255,.86),rgba(255,255,255,.7)); }
 .b2-workspace-view .border { border-color:rgba(188,207,229,.58); }
 .b2-workspace-view input,.b2-workspace-view textarea { background:rgba(255,255,255,.86); border-color:#d7e3f0; }
+
+/* Horizon Design System Tokens & Utilities */
+@keyframes horizon-gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-horizon-gradient {
+  background-size: 200% 200%;
+  animation: horizon-gradient-shift 12s ease infinite;
+}
+
+.horizon-glass {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 8px 32px rgba(15, 30, 60, 0.05);
+}
+
+.horizon-glass-card {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 16px 48px -12px rgba(18, 48, 90, 0.08), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+.horizon-glass-pill {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 16px rgba(18, 48, 90, 0.04);
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
