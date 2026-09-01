@@ -1,2 +1,5 @@
-import Brain2PublicInfo from "@/features/brain2/Brain2PublicInfo";
-export default function Page(){ return <Brain2PublicInfo kind="docs"/>; }
+import { DocsView } from "@/features/brain2/DocsView";
+
+export default function DocsPage() {
+  return <DocsView />;
+}
