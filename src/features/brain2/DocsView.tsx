@@ -54,7 +54,6 @@ interface DocArticle {
   category: string;
   title: string;
   summary: string;
-  readTime: string;
   badge?: string;
   content: {
     overview: string;
@@ -84,9 +83,8 @@ const docArticles: DocArticle[] = [
   {
     id: "quickstart",
     category: "getting-started",
-    title: "Quickstart: From Chat Export to Working Memory in 60s",
+    title: "Quickstart: From Chat Export to Working Memory",
     summary: "Learn how to import conversation archives from ChatGPT, Claude, or Gemini without creating an account.",
-    readTime: "2 min read",
     badge: "Essential",
     content: {
       overview:
@@ -113,7 +111,6 @@ const docArticles: DocArticle[] = [
     category: "getting-started",
     title: "Chrome Extension Real-Time Capture",
     summary: "Automatically index conversations as you chat with AI assistants in your browser tabs.",
-    readTime: "3 min read",
     content: {
       overview:
         "Instead of waiting for periodic bulk exports, the Brain2 Companion Extension intercepts active conversation turns in real time from ChatGPT, Claude, and Gemini web interfaces.",
@@ -144,7 +141,6 @@ const docArticles: DocArticle[] = [
     category: "core-engine",
     title: "Understanding Typed Atoms & Cryptographic Lineage",
     summary: "How Brain2 breaks unstructured chat text into immutable, verifiable units of knowledge.",
-    readTime: "4 min read",
     badge: "Core Architecture",
     content: {
       overview:
@@ -180,7 +176,6 @@ const docArticles: DocArticle[] = [
     category: "core-engine",
     title: "Truth Engine: Resolving Contradictory Decisions",
     summary: "Automated chronological consensus tracking and superseded decision reconciliation.",
-    readTime: "3 min read",
     content: {
       overview:
         "Over months of development, team architectures evolve. A library chosen in January might be replaced in June. The Truth Engine prevents AI hallucinations by managing decision consensus over time.",
@@ -200,7 +195,6 @@ const docArticles: DocArticle[] = [
     category: "projects",
     title: "Living Projects & Auto-Clustering",
     summary: "How Brain2 organizes conversations into project hubs with active NOW priorities.",
-    readTime: "3 min read",
     content: {
       overview:
         "Conversations rarely exist in isolation. You might have 15 different chats discussing database indexing, API routing, and UI design for the same SaaS application. Living Projects group them automatically.",
@@ -221,7 +215,6 @@ const docArticles: DocArticle[] = [
     category: "projects",
     title: "LifeWiki Synthesis: Auto-Generated Documentation",
     summary: "Generate clean, structured project documentation directly from your conversation history.",
-    readTime: "2 min read",
     content: {
       overview:
         "LifeWiki is an automated documentation compiler. It reads all active atoms within a project and produces clean, human-readable markdown summaries containing Architecture Decision Records (ADRs), constraints, and key milestones.",
@@ -249,7 +242,6 @@ const docArticles: DocArticle[] = [
     category: "security",
     title: "Vault Architecture: Client-Side PBKDF2 + AES-256",
     summary: "Deep dive into Brain2's cryptographic security model and .B2M vault packaging.",
-    readTime: "5 min read",
     badge: "Security Standard",
     content: {
       overview:
@@ -296,7 +288,6 @@ const derivedKey = await crypto.subtle.deriveKey(
     category: "b2job",
     title: "B2JOB: Compacting AI Context by 90%",
     summary: "How to feed verified project constraints to LLMs without token waste or hallucinations.",
-    readTime: "3 min read",
     badge: "Token Optimization",
     content: {
       overview:
@@ -446,22 +437,17 @@ export function DocsView() {
                     <button
                       key={article.id}
                       onClick={() => setActiveArticleId(article.id)}
-                      className={`w-full flex items-start justify-between p-2.5 rounded-xl text-left transition-all ${
+                      className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all ${
                         isSelected
                           ? "bg-blue-50/80 border border-blue-200/90 text-blue-900 shadow-2xs"
                           : "hover:bg-slate-50 text-slate-700 border border-transparent"
                       }`}
                     >
-                      <div className="space-y-0.5 pr-2">
-                        <div className="text-xs font-medium leading-snug line-clamp-2">
-                          {article.title}
-                        </div>
-                        <div className="text-[10px] text-slate-400 font-normal">
-                          {article.readTime}
-                        </div>
+                      <div className="text-xs font-medium leading-snug line-clamp-2 pr-2">
+                        {article.title}
                       </div>
                       {isSelected && (
-                        <ChevronRight className="size-3.5 text-blue-600 shrink-0 mt-0.5" />
+                        <ChevronRight className="size-3.5 text-blue-600 shrink-0" />
                       )}
                     </button>
                   );
@@ -479,16 +465,13 @@ export function DocsView() {
             <div className="rounded-3xl border border-slate-200/80 bg-white/80 p-6 sm:p-9 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl space-y-6">
               {/* Article Header */}
               <div className="pb-5 border-b border-slate-100">
-                <div className="flex items-center gap-2 mb-2">
-                  {activeArticle.badge && (
+                {activeArticle.badge && (
+                  <div className="flex items-center gap-2 mb-2">
                     <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60">
                       {activeArticle.badge}
                     </span>
-                  )}
-                  <span className="text-[10px] font-mono text-slate-400">
-                    {activeArticle.readTime}
-                  </span>
-                </div>
+                  </div>
+                )}
                 <h2 className="text-xl sm:text-2xl font-normal text-slate-900 tracking-tight leading-snug">
                   {activeArticle.title}
                 </h2>
