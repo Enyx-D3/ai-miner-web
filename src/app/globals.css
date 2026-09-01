@@ -298,3 +298,68 @@
   scrollbar-width: none;
 }
 
+/* Redesigned Dashboard High-Tech Tokens */
+.glow-cyan {
+  box-shadow: 0 0 24px -4px rgba(32, 189, 245, 0.35);
+}
+.glow-blue {
+  box-shadow: 0 0 24px -4px rgba(24, 100, 255, 0.35);
+}
+.glow-violet {
+  box-shadow: 0 0 24px -4px rgba(119, 92, 255, 0.35);
+}
+.glow-emerald {
+  box-shadow: 0 0 24px -4px rgba(32, 173, 118, 0.35);
+}
+
+.radar-pulse {
+  position: relative;
+}
+.radar-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 2px solid currentColor;
+  opacity: 0.8;
+  animation: radar-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes radar-ping {
+  75%, 100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.mesh-glow-hero {
+  background: radial-gradient(circle at 10% 20%, rgba(32, 189, 245, 0.12) 0%, transparent 40%),
+              radial-gradient(circle at 90% 80%, rgba(119, 92, 255, 0.12) 0%, transparent 45%),
+              radial-gradient(circle at 50% 50%, rgba(24, 100, 255, 0.08) 0%, transparent 60%),
+              linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 255, 0.92));
+}
+
+.tech-grid-pattern {
+  background-image: linear-gradient(rgba(32, 100, 255, 0.05) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(32, 100, 255, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.glass-deck {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(200, 220, 245, 0.65);
+  box-shadow: 0 12px 36px -8px rgba(18, 52, 90, 0.06), 0 1px 0 rgba(255, 255, 255, 0.95) inset;
+}
+
+.glass-deck-hover {
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glass-deck-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(94, 158, 226, 0.7);
+  box-shadow: 0 20px 48px -10px rgba(18, 65, 120, 0.12), 0 1px 0 rgba(255, 255, 255, 1) inset;
+}
+
+

@@ -21,6 +21,7 @@ import {
   Cpu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { HeroDashboardPreview } from "./components/HeroDashboardPreview";
 
 const capabilities = [
   {
@@ -199,6 +200,9 @@ export default function Brain2Landing() {
             </span>
           </div>
         </div>
+
+        {/* Hero Dashboard Preview Mockup */}
+        <HeroDashboardPreview />
       </section>
 
       {/* ========================================================= */}
