@@ -321,7 +321,7 @@ export function HowItWorksView() {
       {/* ========================================================= */}
       {/* 2. INTERACTIVE LIVE SIMULATOR ("SEE IT IN ACTION")         */}
       {/* ========================================================= */}
-      <section className="px-6 py-10 max-w-5xl mx-auto">
+      <section className="px-0 py-10 w-[94%] max-w-6xl mx-auto">
         <div className="rounded-3xl border border-slate-200/80 bg-white/70 p-5 sm:p-8 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
           {/* Header & Scenario Switcher */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-slate-100">
@@ -486,7 +486,7 @@ export function HowItWorksView() {
       {/* ========================================================= */}
       {/* 3. FOUR CLEAR STEPS (CLEAN & MINIMAL CARDS)               */}
       {/* ========================================================= */}
-      <section className="px-6 py-12 max-w-5xl mx-auto">
+      <section className="px-0 py-12 w-[94%] max-w-6xl mx-auto">
         <div className="text-center max-w-2xl mx-auto mb-10">
           <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
             Simple 4-Step Process
@@ -552,7 +552,7 @@ export function HowItWorksView() {
       {/* ========================================================= */}
       {/* 4. STEP-BY-STEP EXPORT GUIDES (CHATGPT, CLAUDE, GEMINI)   */}
       {/* ========================================================= */}
-      <section className="px-6 py-12 max-w-4xl mx-auto">
+      <section className="px-0 py-12 w-[94%] max-w-6xl mx-auto">
         <div className="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-slate-50/60 via-white to-slate-50/40 p-5 sm:p-8 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
           <div className="text-center max-w-xl mx-auto mb-6">
             <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
@@ -609,7 +609,7 @@ export function HowItWorksView() {
       {/* ========================================================= */}
       {/* 5. FREQUENTLY ASKED QUESTIONS (ACCORDION)                 */}
       {/* ========================================================= */}
-      <section className="px-6 py-12 max-w-3xl mx-auto">
+      <section className="px-0 py-12 w-[94%] max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
             Questions & Answers
@@ -657,12 +657,8 @@ export function HowItWorksView() {
       {/* ========================================================= */}
       {/* 6. MINIMAL & FRIENDLY CALL TO ACTION                      */}
       {/* ========================================================= */}
-      <section className="px-6 py-14 text-center max-w-4xl mx-auto mb-14">
+      <section className="px-0 py-14 text-center w-[94%] max-w-6xl mx-auto mb-14">
         <div className="rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50/60 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-0.5 text-xs font-normal text-blue-700 mb-3">
-            <Sparkles className="size-3" />
-            <span>Ready in 30 Seconds</span>
-          </div>
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-normal text-slate-900 tracking-tight leading-[1.2]">
             Start exploring your AI knowledge.
           </h2>

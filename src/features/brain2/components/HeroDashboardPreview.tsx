@@ -7,13 +7,17 @@ import {
   BookOpen,
   BrainCircuit,
   CalendarDays,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
-  ChevronUp,
   Clock,
+  Code,
+  Copy,
   Cpu,
   Download,
   ExternalLink,
+  Eye,
   FileCheck2,
   FileSpreadsheet,
   FileText,
@@ -28,6 +32,7 @@ import {
   LayoutGrid,
   Lightbulb,
   ListChecks,
+  Lock,
   LockKeyhole,
   MessagesSquare,
   NotebookTabs,
@@ -39,13 +44,13 @@ import {
   Share2,
   ShieldAlert,
   ShieldCheck,
-  Smartphone,
   Sparkles,
   Target,
   Terminal,
   TrendingUp,
   Upload,
   Workflow,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -81,29 +86,185 @@ const memoryItems: NavItem[] = [
   { id: "projects", title: "Projects", icon: FolderKanban },
   { id: "notebooks", title: "Live Notebooks", icon: NotebookTabs },
   { id: "wiki", title: "LifeWiki", icon: BookOpen },
-  { id: "conversations", title: "Conversations", icon: MessagesSquare },
+  { id: "conversations", title: "Conversations", icon: MessagesSquare, badge: "12", badgeColor: "bg-slate-100 text-slate-700" },
   { id: "timeline", title: "Timeline", icon: CalendarDays },
 ];
 
 const intelligenceItems: NavItem[] = [
-  { id: "ticks", title: "Things That Need You", icon: ListChecks },
-  { id: "decisions", title: "Decisions", icon: Target },
-  { id: "discover", title: "Discover", icon: Lightbulb },
+  { id: "ticks", title: "Things That Need You", icon: ListChecks, badge: "3", badgeColor: "bg-amber-100 text-amber-800" },
+  { id: "decisions", title: "Decisions", icon: Target, badge: "4", badgeColor: "bg-purple-100 text-purple-800" },
+  { id: "discover", title: "Discover", icon: Lightbulb, badge: "New", badgeColor: "bg-emerald-100 text-emerald-800" },
   { id: "patterns", title: "Patterns", icon: BrainCircuit },
   { id: "experiments", title: "Experiments", icon: FlaskConical },
-  { id: "missions", title: "Brain2Missions", icon: History },
+  { id: "missions", title: "Brain2Missions", icon: History, badge: "2 Live", badgeColor: "bg-blue-100 text-blue-800" },
   { id: "outputs", title: "Outputs & Reports", icon: ShieldCheck },
+];
+
+// Rich Sample Data for In-Depth Drill-Downs
+const sampleConversations = [
+  {
+    id: "conv-1",
+    provider: "ChatGPT",
+    providerColor: "bg-emerald-50 text-emerald-700",
+    title: "Distributed Vector Memory Architecture & Storage Engine",
+    date: "2 days ago",
+    messagesCount: 34,
+    atomsCount: 12,
+    topic: "IndexedDB + Dexie.js Schema Design",
+    turns: [
+      {
+        role: "user",
+        text: "How can we structure browser IndexedDB to handle 100,000 conversation messages without UI freezing or huge garbage collection spikes?",
+      },
+      {
+        role: "assistant",
+        text: "We should partition storage into two tiers: Volatile Fast Memory (LRU in-memory cache) and IndexedDB Cold Storage with chunked secondary indices on `projectId` and `timestamp`. Use Dexie.js v4 with Web Workers for batch atom extraction.",
+      },
+      {
+        role: "user",
+        text: "Agreed. Let's make IndexedDB the authoritative store and make sure passphrases never leave RAM.",
+      },
+    ],
+    atomsExtracted: [
+      { kind: "DECISION", text: "IndexedDB partitioned with Dexie.js is authoritative master store." },
+      { kind: "CONSTRAINT", text: "Passphrase and derived keys must never touch disk storage." },
+      { kind: "TASK", text: "Implement WebAssembly decompression worker in fflate." },
+    ],
+    hash: "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+  },
+  {
+    id: "conv-2",
+    provider: "Claude",
+    providerColor: "bg-purple-50 text-purple-700",
+    title: "Autonomous Agent Consensus Protocol & P2P Synchronization",
+    date: "3 days ago",
+    messagesCount: 22,
+    atomsCount: 8,
+    topic: "WebRTC Mesh Sync & CRDTs",
+    turns: [
+      {
+        role: "user",
+        text: "When synchronizing project deltas between two local laptops without a centralized server, how do we resolve merge conflicts?",
+      },
+      {
+        role: "assistant",
+        text: "Use state-based CRDTs (LWW-Element-Set) tied to monotonic sequence hashes. Each mutation turn is signed with a deterministic turn hash. When conflicting ADRs occur, the Truth Engine flags them as `ACTION NEEDED` operator ticks.",
+      },
+    ],
+    atomsExtracted: [
+      { kind: "DECISION", text: "LWW-Element-Set CRDTs used for multi-device peer delta merges." },
+      { kind: "FACT", text: "Direct WebSockets / WebRTC data channels handle device mesh without intermediaries." },
+    ],
+    hash: "sha256:3a1b4c9e8d7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b",
+  },
+  {
+    id: "conv-3",
+    provider: "Gemini",
+    providerColor: "bg-blue-50 text-blue-700",
+    title: "Next-Gen Local Inference Pipeline (WASM & ONNX)",
+    date: "4 days ago",
+    messagesCount: 16,
+    atomsCount: 6,
+    topic: "4-bit Quantization & Local Tokenizer",
+    turns: [
+      {
+        role: "user",
+        text: "Can we run a 0.5B parameter tokenization and proposition extraction model entirely in browser WebAssembly?",
+      },
+      {
+        role: "assistant",
+        text: "Yes. Using ONNX Runtime Web with WebGPU / WASM execution backend, Qwen2.5-0.5B runs at ~14.2ms per turn and uses under 380MB volatile RAM.",
+      },
+    ],
+    atomsExtracted: [
+      { kind: "FACT", text: "ONNX Runtime Web executes client proposition extraction at 14.2ms latency." },
+      { kind: "DECISION", text: "Fallback to regex rule engine when WebGPU is unavailable." },
+    ],
+    hash: "sha256:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+  },
+];
+
+const sampleWikiArticles = [
+  {
+    id: "wiki-1",
+    title: "Local-First Architecture & Provenance Standards",
+    category: "Architecture",
+    sources: "Compiled from 8 chats · 48 atoms",
+    sections: [
+      {
+        heading: "1. Authoritative Client Storage",
+        body: "All conversation memory entities are persisted strictly within browser IndexedDB. Cloud servers act solely as transient computation surfaces with zero retention.",
+      },
+      {
+        heading: "2. Cryptographic Turn Hashes",
+        body: "Every atom references a deterministic SHA-256 hash. If an audit is required, 1-click jumps directly to the exact conversation turn with verified quotes.",
+      },
+      {
+        heading: "3. Conflict Reconciliation",
+        body: "When decisions evolve over time, older claims are marked as SUPERSEDED while maintaining complete immutable history in the lineage tree.",
+      },
+    ],
+  },
+  {
+    id: "wiki-2",
+    title: "Vault Security: PBKDF2 (200k) + AES-256-GCM",
+    category: "Security",
+    sources: "Compiled from 6 chats · 32 atoms",
+    sections: [
+      {
+        heading: "1. Key Derivation Standard",
+        body: "User passphrases derive master keys via 200,000 PBKDF2 rounds with SHA-256 and unique 128-bit salt buffers.",
+      },
+      {
+        heading: "2. Encrypted .B2M Export Packages",
+        body: "All projects, chats, and evidence blocks are packed into a single portable binary file with authenticated AES-GCM tags.",
+      },
+    ],
+  },
 ];
 
 export function HeroDashboardPreview() {
   const [activeTab, setActiveTab] = useState<NavItemId>("home");
   const [searchFilter, setSearchFilter] = useState("all");
   const [resolvedTicks, setResolvedTicks] = useState<number[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [selectedWikiArticle, setSelectedWikiArticle] = useState<string>("wiki-1");
+  const [decisionFilter, setDecisionFilter] = useState<"all" | "approved" | "active" | "superseded">("all");
+  const [isBenchmarking, setIsBenchmarking] = useState(false);
+  const [benchmarkResult, setBenchmarkResult] = useState<number | null>(null);
+  const [revivedGold, setRevivedGold] = useState<number[]>([]);
+  const [copiedContext, setCopiedContext] = useState(false);
+  const [selectedInspectItem, setSelectedInspectItem] = useState<{
+    title: string;
+    type: string;
+    details: string;
+    hash: string;
+  } | null>(null);
 
   const handleResolveTick = (id: number) => {
     if (!resolvedTicks.includes(id)) {
       setResolvedTicks([...resolvedTicks, id]);
     }
+  };
+
+  const handleRunBenchmark = () => {
+    setIsBenchmarking(true);
+    setTimeout(() => {
+      setIsBenchmarking(false);
+      setBenchmarkResult(14.2);
+    }, 700);
+  };
+
+  const handleReviveGold = (id: number) => {
+    if (!revivedGold.includes(id)) {
+      setRevivedGold([...revivedGold, id]);
+    }
+  };
+
+  const handleCopyText = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedContext(true);
+    setTimeout(() => setCopiedContext(false), 2000);
   };
 
   return (
@@ -113,13 +274,39 @@ export function HeroDashboardPreview() {
 
       {/* Main Container Mockup Window */}
       <div className="relative overflow-hidden rounded-2xl sm:rounded-[26px] border border-slate-200/90 bg-white/95 shadow-[0_25px_70px_-15px_rgba(15,30,60,0.12)] backdrop-blur-xl transition-all duration-300">
+        
+        {/* Mobile Horizontal Tab Scroller (Visible on small screens) */}
+        <div className="md:hidden flex items-center gap-1.5 overflow-x-auto p-2.5 bg-slate-100/80 border-b border-slate-200 scrollbar-none">
+          {[...memoryItems, ...intelligenceItems].map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  setSelectedInspectItem(null);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs whitespace-nowrap transition-all ${
+                  isActive
+                    ? "bg-blue-600 text-white font-medium shadow-2xs"
+                    : "bg-white text-slate-700 border border-slate-200"
+                }`}
+              >
+                <Icon className="size-3" />
+                <span>{item.title}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Dashboard Grid Layout (Sidebar + Main Content Pane) */}
         <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] lg:grid-cols-[240px_1fr] min-h-[620px] bg-white">
           {/* ========================================================= */}
-          {/* LEFT SIDEBAR (Matching Exact User Specification)         */}
+          {/* LEFT SIDEBAR (Interactive Switcher)                       */}
           {/* ========================================================= */}
           <aside className="hidden md:flex flex-col justify-between border-r border-slate-200/70 bg-slate-50/50 p-3.5 text-xs select-none">
-            <div className="space-y-4 max-h-[550px] overflow-y-auto pr-1 scrollbar-thin">
+            <div className="space-y-4 max-h-[580px] overflow-y-auto pr-1 scrollbar-thin">
               {/* Group 1: MEMORY */}
               <div className="space-y-1">
                 <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -131,7 +318,10 @@ export function HeroDashboardPreview() {
                   return (
                     <button
                       key={item.id}
-                      onClick={() => setActiveTab(item.id)}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setSelectedInspectItem(null);
+                      }}
                       className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-all ${
                         isActive
                           ? "bg-blue-50/90 text-blue-700 font-semibold border-l-2 border-blue-600 shadow-2xs"
@@ -163,7 +353,10 @@ export function HeroDashboardPreview() {
                   return (
                     <button
                       key={item.id}
-                      onClick={() => setActiveTab(item.id)}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setSelectedInspectItem(null);
+                      }}
                       className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-all ${
                         isActive
                           ? "bg-blue-50/90 text-blue-700 font-semibold border-l-2 border-blue-600 shadow-2xs"
@@ -184,12 +377,22 @@ export function HeroDashboardPreview() {
                 })}
               </div>
             </div>
+
+            {/* Bottom Status Pill */}
+            <div className="pt-3 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-500">
+              <div className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Local DB Engine</span>
+              </div>
+              <span className="font-mono text-slate-400">0.4ms</span>
+            </div>
           </aside>
 
           {/* ========================================================= */}
-          {/* MAIN CONTENT WORKSPACE (Detailed Realistic Dummy Views)   */}
+          {/* MAIN CONTENT WORKSPACE (Rich Interactive Detail Views)     */}
           {/* ========================================================= */}
-          <main className="p-5 sm:p-7 lg:p-8 bg-white flex flex-col justify-between overflow-y-auto max-h-[600px]">
+          <main className="relative p-5 sm:p-7 lg:p-8 bg-white flex flex-col justify-between overflow-y-auto max-h-[620px]">
+            
             {/* 1. HOME VIEW */}
             {activeTab === "home" && (
               <div className="space-y-6 animate-in fade-in duration-200">
@@ -207,20 +410,26 @@ export function HeroDashboardPreview() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs">
-                      <RefreshCw className="size-3 text-slate-500" />
-                      <span>Sync</span>
+                    <button
+                      onClick={() => setActiveTab("conversations")}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+                    >
+                      <MessagesSquare className="size-3 text-slate-500" />
+                      <span>View Chats</span>
                     </button>
-                    <button className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-600 transition-colors">
-                      <Sparkles className="size-3.5" />
-                      <span>Run Synthesis</span>
+                    <button
+                      onClick={() => setActiveTab("b2job")}
+                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 transition-colors"
+                    >
+                      <BrainCircuit className="size-3.5" />
+                      <span>Ask AI</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Top Metrics Cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 hover:border-slate-300 transition-colors">
                     <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                       <span>Total Ingested</span>
                       <MessagesSquare className="size-3 text-slate-400" />
@@ -228,7 +437,7 @@ export function HeroDashboardPreview() {
                     <div className="mt-1.5 text-2xl font-bold text-slate-900 font-mono">1,480</div>
                     <div className="mt-1 text-[10px] text-emerald-600 font-medium">100% deduplicated atoms</div>
                   </div>
-                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 hover:border-slate-300 transition-colors">
                     <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                       <span>Provenance Hash</span>
                       <ShieldCheck className="size-3 text-blue-500" />
@@ -236,7 +445,7 @@ export function HeroDashboardPreview() {
                     <div className="mt-1.5 text-2xl font-bold text-slate-900 font-mono">SHA-256</div>
                     <div className="mt-1 text-[10px] text-blue-600 font-medium">Zero unverified claims</div>
                   </div>
-                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 hover:border-slate-300 transition-colors">
                     <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                       <span>Current Truth</span>
                       <Target className="size-3 text-purple-500" />
@@ -244,7 +453,7 @@ export function HeroDashboardPreview() {
                     <div className="mt-1.5 text-2xl font-bold text-slate-900 font-mono">24</div>
                     <div className="mt-1 text-[10px] text-purple-600 font-medium">3 superseding updates</div>
                   </div>
-                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 hover:border-slate-300 transition-colors">
                     <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                       <span>Store Latency</span>
                       <Zap className="size-3 text-amber-500" />
@@ -267,31 +476,46 @@ export function HeroDashboardPreview() {
                       Active Stage: RECONCILE
                     </span>
                   </div>
-                  <div className="mt-4 grid grid-cols-5 gap-2 text-center text-xs">
-                    <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
-                      <div className="text-[10px] font-semibold text-slate-400">SOURCE</div>
-                      <div className="text-base font-bold text-slate-800">12 Archives</div>
-                      <div className="text-[9px] text-slate-500">14,280 msgs</div>
+                  <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-center text-xs">
+                    <div
+                      onClick={() => setActiveTab("conversations")}
+                      className="min-w-0 rounded-xl bg-slate-50 p-2 sm:p-2.5 border border-slate-100 flex flex-col justify-center cursor-pointer hover:border-blue-300 hover:bg-white transition-all"
+                    >
+                      <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">SOURCE</div>
+                      <div className="text-xs sm:text-sm lg:text-base font-bold text-slate-800 truncate">12 Archives</div>
+                      <div className="text-[9px] text-slate-500 truncate">14,280 msgs</div>
                     </div>
-                    <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
-                      <div className="text-[10px] font-semibold text-slate-400">ATOMIZE</div>
-                      <div className="text-base font-bold text-slate-800">1,480 Atoms</div>
-                      <div className="text-[9px] text-slate-500">Claims & facts</div>
+                    <div
+                      onClick={() => setActiveTab("search")}
+                      className="min-w-0 rounded-xl bg-slate-50 p-2 sm:p-2.5 border border-slate-100 flex flex-col justify-center cursor-pointer hover:border-blue-300 hover:bg-white transition-all"
+                    >
+                      <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">ATOMIZE</div>
+                      <div className="text-xs sm:text-sm lg:text-base font-bold text-slate-800 truncate">1,480 Atoms</div>
+                      <div className="text-[9px] text-slate-500 truncate">Claims & facts</div>
                     </div>
-                    <div className="rounded-xl bg-blue-50/90 p-2.5 border border-blue-200/90 text-blue-900 shadow-2xs">
-                      <div className="text-[10px] font-semibold text-blue-600">RECONCILE</div>
-                      <div className="text-base font-bold">24 Truths</div>
-                      <div className="text-[9px] text-blue-600 font-medium">0 conflicts</div>
+                    <div
+                      onClick={() => setActiveTab("decisions")}
+                      className="min-w-0 rounded-xl bg-blue-50/90 p-2 sm:p-2.5 border border-blue-200/90 text-blue-900 shadow-2xs flex flex-col justify-center cursor-pointer hover:border-blue-400 transition-all"
+                    >
+                      <div className="text-[10px] font-semibold text-blue-600 uppercase tracking-wider truncate">RECONCILE</div>
+                      <div className="text-xs sm:text-sm lg:text-base font-bold truncate">24 Truths</div>
+                      <div className="text-[9px] text-blue-600 font-medium truncate">0 conflicts</div>
                     </div>
-                    <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
-                      <div className="text-[10px] font-semibold text-slate-400">PATTERNS</div>
-                      <div className="text-base font-bold text-slate-800">8 Signals</div>
-                      <div className="text-[9px] text-slate-500">Cognitive flow</div>
+                    <div
+                      onClick={() => setActiveTab("patterns")}
+                      className="min-w-0 rounded-xl bg-slate-50 p-2 sm:p-2.5 border border-slate-100 flex flex-col justify-center cursor-pointer hover:border-blue-300 hover:bg-white transition-all"
+                    >
+                      <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">PATTERNS</div>
+                      <div className="text-xs sm:text-sm lg:text-base font-bold text-slate-800 truncate">8 Signals</div>
+                      <div className="text-[9px] text-slate-500 truncate">Cognitive flow</div>
                     </div>
-                    <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
-                      <div className="text-[10px] font-semibold text-slate-400">EXPERTISE</div>
-                      <div className="text-base font-bold text-slate-800">Portable</div>
-                      <div className="text-[9px] text-emerald-600 font-medium">.B2M Verified</div>
+                    <div
+                      onClick={() => setActiveTab("outputs")}
+                      className="min-w-0 rounded-xl bg-slate-50 p-2 sm:p-2.5 border border-slate-100 col-span-2 sm:col-span-1 lg:col-span-1 flex flex-col justify-center cursor-pointer hover:border-blue-300 hover:bg-white transition-all"
+                    >
+                      <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">EXPERTISE</div>
+                      <div className="text-xs sm:text-sm lg:text-base font-bold text-slate-800 truncate">Portable</div>
+                      <div className="text-[9px] text-emerald-600 font-medium truncate">.B2M Verified</div>
                     </div>
                   </div>
                 </div>
@@ -371,8 +595,11 @@ export function HeroDashboardPreview() {
                       <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-mono text-slate-600">Projection: auth-vault-v2</span>
                       <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700 font-medium">3 Provenance Citations</span>
                     </div>
-                    <button className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors shadow-2xs">
-                      Compile B2JOB Package
+                    <button
+                      onClick={() => handleCopyText("### B2JOB Context\nADR-002: PBKDF2 (100k) + AES-256-GCM\nConstraint: Zero cloud storage")}
+                      className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors shadow-2xs"
+                    >
+                      {copiedContext ? "Copied to Clipboard ✓" : "Compile B2JOB Package"}
                     </button>
                   </div>
                 </div>
@@ -440,7 +667,7 @@ export function HeroDashboardPreview() {
                     <input
                       type="text"
                       defaultValue="PBKDF2 key derivation"
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/80 pl-10 pr-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-blue-600 shadow-2xs"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/80 pl-10 pr-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-blue-600 shadow-2xs font-normal"
                     />
                   </div>
 
@@ -450,7 +677,7 @@ export function HeroDashboardPreview() {
                         key={filter}
                         onClick={() => setSearchFilter(filter)}
                         className={`rounded-full px-3 py-1 text-[11px] font-medium transition-all ${
-                          i === 0
+                          (searchFilter === filter) || (i === 0 && searchFilter === "all")
                             ? "bg-slate-900 text-white"
                             : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                         }`}
@@ -467,7 +694,15 @@ export function HeroDashboardPreview() {
                     <span className="font-mono text-[10px]">Index scan: 0.2ms</span>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all">
+                  <div
+                    onClick={() => setSelectedInspectItem({
+                      title: "PBKDF2 Master Key Derivation Strategy",
+                      type: "DECISION",
+                      details: "Derived key uses 100,000 iterations of SHA-256 for passphrase stretching before initializing client AES-GCM cipher.",
+                      hash: "sha256:8f4c2e1b9a03c4d5e6f7a8b9c0d1e2f3",
+                    })}
+                    className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all cursor-pointer"
+                  >
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-slate-900">PBKDF2 Master Key Derivation Strategy</span>
                       <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">DECISION</span>
@@ -477,11 +712,19 @@ export function HeroDashboardPreview() {
                     </p>
                     <div className="mt-3 flex items-center justify-between text-[10px] text-slate-400 font-mono">
                       <span>ChatGPT_export · turn_84</span>
-                      <span className="text-emerald-600 font-semibold">Score: 99.4%</span>
+                      <span className="text-emerald-600 font-semibold">Score: 99.4% · Click to Inspect →</span>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all">
+                  <div
+                    onClick={() => setSelectedInspectItem({
+                      title: "IndexedDB Storage Schema Version 4",
+                      type: "SCHEMA",
+                      details: "Schema v4 stores raw messages, atomized claims, living project summaries, and resolution ticks in structured IndexedDB stores.",
+                      hash: "sha256:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+                    })}
+                    className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all cursor-pointer"
+                  >
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-slate-900">IndexedDB Storage Schema Version 4</span>
                       <span className="rounded bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700">SCHEMA</span>
@@ -491,21 +734,7 @@ export function HeroDashboardPreview() {
                     </p>
                     <div className="mt-3 flex items-center justify-between text-[10px] text-slate-400 font-mono">
                       <span>Claude_export · turn_12</span>
-                      <span className="text-blue-600 font-semibold">Score: 96.7%</span>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-900">DTLS-Encrypted WebRTC Mesh Sync</span>
-                      <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">FACT</span>
-                    </div>
-                    <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
-                      Direct peer-to-peer memory replication without centralized relay intermediaries.
-                    </p>
-                    <div className="mt-3 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                      <span>Gemini_export · turn_31</span>
-                      <span className="text-blue-600 font-semibold">Score: 94.2%</span>
+                      <span className="text-blue-600 font-semibold">Score: 96.7% · Click to Inspect →</span>
                     </div>
                   </div>
                 </div>
@@ -531,7 +760,10 @@ export function HeroDashboardPreview() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3.5">
-                  <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all">
+                  <div
+                    onClick={() => setActiveTab("wiki")}
+                    className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all cursor-pointer"
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="flex size-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 font-bold">
@@ -563,7 +795,10 @@ export function HeroDashboardPreview() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all">
+                  <div
+                    onClick={() => setActiveTab("decisions")}
+                    className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all cursor-pointer"
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="flex size-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 font-bold">
@@ -610,7 +845,7 @@ export function HeroDashboardPreview() {
                       Executable documents compiling NOW context, findings, evidence, and decisions.
                     </p>
                   </div>
-                  <button className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">
+                  <button className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600 transition-colors">
                     + New Notebook
                   </button>
                 </div>
@@ -650,42 +885,59 @@ export function HeroDashboardPreview() {
             {/* 6. LIFEWIKI */}
             {activeTab === "wiki" && (
               <div className="space-y-6 animate-in fade-in duration-200">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-                    LifeWiki Knowledge Graph
-                  </h2>
-                  <p className="mt-1 text-xs sm:text-sm text-slate-500">
-                    Living knowledge pages automatically compiled and updated from conversation history.
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+                      LifeWiki Knowledge Graph
+                    </h2>
+                    <p className="mt-1 text-xs sm:text-sm text-slate-500">
+                      Living knowledge pages automatically compiled and updated from conversation history.
+                    </p>
+                  </div>
+                  {/* Article Tabs */}
+                  <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl">
+                    {sampleWikiArticles.map((art) => (
+                      <button
+                        key={art.id}
+                        onClick={() => setSelectedWikiArticle(art.id)}
+                        className={`px-2.5 py-1 text-xs rounded-lg transition-all ${
+                          selectedWikiArticle === art.id
+                            ? "bg-white text-blue-600 font-semibold shadow-2xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        {art.category}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs space-y-3.5">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Article #14</span>
-                      <h4 className="font-bold text-sm text-slate-900">Local-First Architecture & Provenance Standards</h4>
+                {(() => {
+                  const art = sampleWikiArticles.find((a) => a.id === selectedWikiArticle) || sampleWikiArticles[0];
+                  return (
+                    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-2xs space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">{art.category} Standard</span>
+                          <h4 className="font-bold text-base text-slate-900 mt-0.5">{art.title}</h4>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono">{art.sources}</span>
+                      </div>
+                      <div className="text-xs text-slate-700 leading-relaxed space-y-3">
+                        {art.sections.map((sec) => (
+                          <div key={sec.heading} className="rounded-xl bg-slate-50/70 p-3 border border-slate-100">
+                            <strong className="text-slate-900">{sec.heading}</strong>
+                            <p className="mt-1 text-slate-600">{sec.body}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono">Compiled from 8 chats</span>
-                  </div>
-                  <div className="text-xs text-slate-700 leading-relaxed space-y-3">
-                    <div>
-                      <strong className="text-slate-900">1. Authoritative Store:</strong>
-                      <p className="mt-0.5 text-slate-600">All conversation memory entities are persisted strictly within IndexedDB. The local client holds master state authority.</p>
-                    </div>
-                    <div>
-                      <strong className="text-slate-900">2. Provenance Accounting:</strong>
-                      <p className="mt-0.5 text-slate-600">Every synthesized fact and decision links directly back to the original source turn hash.</p>
-                    </div>
-                    <div>
-                      <strong className="text-slate-900">3. Immutable Lineage:</strong>
-                      <p className="mt-0.5 text-slate-600">Superceded claims produce immutable prior-version records instead of silent overwrites.</p>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
             )}
 
-            {/* 7. CONVERSATIONS */}
+            {/* 7. CONVERSATIONS (Deep Interactive Chat Inspector) */}
             {activeTab === "conversations" && (
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between">
@@ -694,58 +946,98 @@ export function HeroDashboardPreview() {
                       Ingested Conversations
                     </h2>
                     <p className="mt-1 text-xs sm:text-sm text-slate-500">
-                      Normalized archives from OpenAI ChatGPT, Anthropic Claude, and Google Gemini.
+                      Click any conversation below to inspect full turns and extracted atoms.
                     </p>
                   </div>
-                  <button className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">
-                    Import ZIP
-                  </button>
+                  <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">
+                    3 Indexed Threads
+                  </span>
                 </div>
 
-                <div className="space-y-2.5">
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs flex items-center justify-between hover:border-blue-300 transition-all cursor-pointer">
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs">
-                        GPT
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-slate-900">Distributed Vector Memory Architecture</div>
-                        <div className="text-[10px] text-slate-400">34 messages · 12 atoms extracted · IndexedDB</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-400">2d ago</span>
-                  </div>
+                <div className="grid grid-cols-1 gap-3">
+                  {sampleConversations.map((conv) => {
+                    const isSelected = selectedConversation === conv.id;
+                    return (
+                      <div
+                        key={conv.id}
+                        className={`rounded-2xl border transition-all ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-50/20 shadow-md ring-1 ring-blue-500/20"
+                            : "border-slate-200/80 bg-white hover:border-slate-300 shadow-2xs"
+                        }`}
+                      >
+                        {/* Conversation Card Header */}
+                        <div
+                          onClick={() => setSelectedConversation(isSelected ? null : conv.id)}
+                          className="p-4 flex items-center justify-between cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${conv.providerColor}`}>
+                              {conv.provider}
+                            </span>
+                            <div>
+                              <div className="text-xs font-semibold text-slate-900">{conv.title}</div>
+                              <div className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                                {conv.messagesCount} msgs · {conv.atomsCount} atoms · {conv.topic}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono text-slate-400">{conv.date}</span>
+                            <ChevronDown className={`size-4 text-slate-400 transition-transform ${isSelected ? "rotate-180 text-blue-600" : ""}`} />
+                          </div>
+                        </div>
 
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs flex items-center justify-between hover:border-blue-300 transition-all cursor-pointer">
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-8 items-center justify-center rounded-lg bg-purple-50 text-purple-700 font-bold text-xs">
-                        CLA
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-slate-900">Autonomous Agent Consensus Protocol</div>
-                        <div className="text-[10px] text-slate-400">22 messages · 8 atoms extracted · P2P</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-400">3d ago</span>
-                  </div>
+                        {/* Expanded Turn-by-Turn Chat Transcript */}
+                        {isSelected && (
+                          <div className="px-4 pb-4 border-t border-slate-100 pt-3 space-y-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              Turn History & Provenance
+                            </div>
+                            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                              {conv.turns.map((turn, tIdx) => (
+                                <div
+                                  key={tIdx}
+                                  className={`p-3 rounded-xl text-xs ${
+                                    turn.role === "user"
+                                      ? "bg-slate-100 text-slate-800 ml-4"
+                                      : "bg-blue-50/80 border border-blue-100 text-blue-950 mr-4"
+                                  }`}
+                                >
+                                  <div className="text-[9px] font-bold uppercase text-slate-400 mb-1">
+                                    {turn.role === "user" ? "You (Operator)" : `${conv.provider} Assistant`}
+                                  </div>
+                                  <p className="leading-relaxed">{turn.text}</p>
+                                </div>
+                              ))}
+                            </div>
 
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs flex items-center justify-between hover:border-blue-300 transition-all cursor-pointer">
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700 font-bold text-xs">
-                        GEM
+                            {/* Extracted Atoms Chips */}
+                            <div className="pt-2 border-t border-slate-100">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                                Extracted Knowledge Atoms ({conv.atomsExtracted.length})
+                              </div>
+                              <div className="space-y-1">
+                                {conv.atomsExtracted.map((atom, aIdx) => (
+                                  <div key={aIdx} className="flex items-center gap-2 text-[11px] bg-white p-2 rounded-lg border border-slate-200/80">
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                                      {atom.kind}
+                                    </span>
+                                    <span className="text-slate-700 truncate">{atom.text}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <div className="text-xs font-semibold text-slate-900">Next-Gen Local Inference Pipeline</div>
-                        <div className="text-[10px] text-slate-400">16 messages · 6 atoms extracted · ONNX/WASM</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-400">4d ago</span>
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {/* 8. TIMELINE */}
+            {/* 8. TIMELINE (Deep Audit Lineage) */}
             {activeTab === "timeline" && (
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div>
@@ -758,26 +1050,50 @@ export function HeroDashboardPreview() {
                 </div>
 
                 <div className="space-y-4 pl-3 border-l-2 border-slate-200 ml-2">
-                  <div className="relative pl-4">
-                    <span className="absolute -left-[23px] top-1 size-2.5 rounded-full bg-blue-600 ring-4 ring-blue-50" />
-                    <div className="text-xs font-semibold text-slate-900">Today · Reconstructed Project &quot;ai-miner-web&quot;</div>
+                  <div
+                    onClick={() => setSelectedInspectItem({
+                      title: "Today · Reconstructed Project 'ai-miner-web'",
+                      type: "TIMELINE_EVENT",
+                      details: "Generated 1,480 message atoms across 12 chat threads with deterministic SHA-256 hashes.",
+                      hash: "sha256:7f83b1657ff1fc53b92dc18148a1d65d",
+                    })}
+                    className="relative pl-4 cursor-pointer group"
+                  >
+                    <span className="absolute -left-[23px] top-1 size-2.5 rounded-full bg-blue-600 ring-4 ring-blue-50 group-hover:scale-125 transition-transform" />
+                    <div className="text-xs font-semibold text-slate-900 group-hover:text-blue-600">Today · Reconstructed Project &quot;ai-miner-web&quot;</div>
                     <div className="text-[11px] text-slate-500 mt-0.5">Generated 1,480 message atoms across 12 chat threads with deterministic hashes.</div>
                   </div>
-                  <div className="relative pl-4">
-                    <span className="absolute -left-[23px] top-1 size-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-50" />
-                    <div className="text-xs font-semibold text-slate-900">Yesterday · Ingested ChatGPT 2024 Archive</div>
+                  <div
+                    onClick={() => setSelectedInspectItem({
+                      title: "Yesterday · Ingested ChatGPT 2024 Archive",
+                      type: "TIMELINE_EVENT",
+                      details: "Preserved stable IDs and SHA-256 provenance hashes without remote data leakage.",
+                      hash: "sha256:3a1b4c9e8d7f6a5b4c3d2e1f0a9b8c7d",
+                    })}
+                    className="relative pl-4 cursor-pointer group"
+                  >
+                    <span className="absolute -left-[23px] top-1 size-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-50 group-hover:scale-125 transition-transform" />
+                    <div className="text-xs font-semibold text-slate-900 group-hover:text-emerald-600">Yesterday · Ingested ChatGPT 2024 Archive</div>
                     <div className="text-[11px] text-slate-500 mt-0.5">Preserved stable IDs and SHA-256 provenance hashes without remote data leakage.</div>
                   </div>
-                  <div className="relative pl-4">
-                    <span className="absolute -left-[23px] top-1 size-2.5 rounded-full bg-purple-500 ring-4 ring-purple-50" />
-                    <div className="text-xs font-semibold text-slate-900">3 Days Ago · Resolved 24 Current Truth Candidates</div>
+                  <div
+                    onClick={() => setSelectedInspectItem({
+                      title: "3 Days Ago · Resolved 24 Current Truth Candidates",
+                      type: "TIMELINE_EVENT",
+                      details: "Operator confirmed PBKDF2-SHA256 vault encryption standard across 6 conversations.",
+                      hash: "sha256:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+                    })}
+                    className="relative pl-4 cursor-pointer group"
+                  >
+                    <span className="absolute -left-[23px] top-1 size-2.5 rounded-full bg-purple-500 ring-4 ring-purple-50 group-hover:scale-125 transition-transform" />
+                    <div className="text-xs font-semibold text-slate-900 group-hover:text-purple-600">3 Days Ago · Resolved 24 Current Truth Candidates</div>
                     <div className="text-[11px] text-slate-500 mt-0.5">Operator confirmed PBKDF2-SHA256 vault encryption standard across 6 conversations.</div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 9. THINGS THAT NEED YOU (TICKS) */}
+            {/* 9. THINGS THAT NEED YOU (Interactive Resolution Ticks) */}
             {activeTab === "ticks" && (
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between">
@@ -798,9 +1114,7 @@ export function HeroDashboardPreview() {
                   {/* Tick 1 */}
                   <div className={`rounded-xl border p-4 shadow-2xs transition-all ${resolvedTicks.includes(1) ? "bg-slate-50/70 border-slate-200 opacity-60" : "bg-amber-50/40 border-amber-200/90"}`}>
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs text-amber-900">Tick #01 · Confirm Encryption Cipher Standard</span>
-                      </div>
+                      <span className="font-bold text-xs text-amber-900">Tick #01 · Confirm Encryption Cipher Standard</span>
                       <span className={`px-2 py-0.5 text-[9px] font-bold rounded ${resolvedTicks.includes(1) ? "bg-slate-200 text-slate-700" : "bg-amber-100 text-amber-800"}`}>
                         {resolvedTicks.includes(1) ? "RESOLVED" : "ACTION NEEDED"}
                       </span>
@@ -813,7 +1127,15 @@ export function HeroDashboardPreview() {
                         <button onClick={() => handleResolveTick(1)} className="rounded bg-amber-600 px-3 py-1 text-[10px] font-semibold text-white hover:bg-amber-700 transition-colors">
                           Resolve (Accept AES-256-GCM)
                         </button>
-                        <button className="rounded bg-white border border-slate-200 px-3 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50">
+                        <button
+                          onClick={() => setSelectedInspectItem({
+                            title: "Encryption Cipher Lineage Inspection",
+                            type: "OPERATOR_TICK",
+                            details: "Claude recommended AES-256-GCM due to native hardware acceleration in Web Crypto API.",
+                            hash: "sha256:cipher_aes256_lineage",
+                          })}
+                          className="rounded bg-white border border-slate-200 px-3 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50"
+                        >
                           Inspect Lineage
                         </button>
                       </div>
@@ -826,24 +1148,28 @@ export function HeroDashboardPreview() {
                   <div className={`rounded-xl border p-4 shadow-2xs transition-all ${resolvedTicks.includes(2) ? "bg-slate-50/70 border-slate-200 opacity-60" : "bg-slate-50 border-slate-200"}`}>
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-xs text-slate-900">Tick #02 · Merge Project Contexts: &quot;miner-ui&quot; → &quot;ai-miner-web&quot;</span>
-                      <span className="bg-slate-100 text-slate-600 px-2 py-0.5 text-[9px] font-bold rounded">PROJECT ALIAS</span>
+                      <span className="bg-slate-100 text-slate-600 px-2 py-0.5 text-[9px] font-bold rounded">
+                        {resolvedTicks.includes(2) ? "MERGED" : "PROJECT ALIAS"}
+                      </span>
                     </div>
                     <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
                       4 older conversation turns refer to legacy name &quot;miner-ui&quot;. Reconcile identity into &quot;ai-miner-web&quot;.
                     </p>
-                    {!resolvedTicks.includes(2) && (
+                    {!resolvedTicks.includes(2) ? (
                       <div className="mt-3 flex gap-2">
                         <button onClick={() => handleResolveTick(2)} className="rounded bg-slate-900 px-3 py-1 text-[10px] font-semibold text-white hover:bg-blue-600 transition-colors">
                           Merge Project Alias
                         </button>
                       </div>
+                    ) : (
+                      <div className="mt-2 text-[10px] text-emerald-700 font-medium">✓ Alias Merged Successfully</div>
                     )}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 10. DECISIONS */}
+            {/* 10. DECISIONS (ADR Registry with Filter Tabs) */}
             {activeTab === "decisions" && (
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between">
@@ -855,49 +1181,91 @@ export function HeroDashboardPreview() {
                       Durable architectural decision records synthesized and agreed upon across projects.
                     </p>
                   </div>
-                  <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-mono font-bold text-purple-700">
-                    4 Active ADRs
-                  </span>
+                  <div className="flex gap-1 bg-slate-100 p-1 rounded-xl text-xs">
+                    {(["all", "approved", "active", "superseded"] as const).map((filter) => (
+                      <button
+                        key={filter}
+                        onClick={() => setDecisionFilter(filter)}
+                        className={`px-2.5 py-1 rounded-lg capitalize transition-all ${
+                          decisionFilter === filter
+                            ? "bg-white text-purple-700 font-bold shadow-2xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="space-y-3">
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-xs text-slate-900">ADR-001: Local-First IndexedDB as Sole Truth Store</span>
-                      <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">APPROVED</span>
+                  {(decisionFilter === "all" || decisionFilter === "approved") && (
+                    <div
+                      onClick={() => setSelectedInspectItem({
+                        title: "ADR-001: Local-First IndexedDB as Sole Truth Store",
+                        type: "DECISION_RECORD",
+                        details: "Browser client holds authoritative state. Cloud nodes act solely as compute execution surfaces with zero data retention.",
+                        hash: "sha256:adr001_indexeddb_sole_truth",
+                      })}
+                      className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-xs text-slate-900">ADR-001: Local-First IndexedDB as Sole Truth Store</span>
+                        <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">APPROVED</span>
+                      </div>
+                      <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
+                        Browser client holds authoritative state. Cloud nodes act solely as compute execution surfaces.
+                      </p>
+                      <div className="mt-2.5 text-[10px] text-slate-400 font-mono">Source: turn_12 (Claude export) · Click to view audit lineage →</div>
                     </div>
-                    <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
-                      Browser client holds authoritative state. Cloud nodes act solely as compute execution surfaces.
-                    </p>
-                    <div className="mt-2.5 text-[10px] text-slate-400 font-mono">Source: turn_12 (Claude export)</div>
-                  </div>
+                  )}
 
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-xs text-slate-900">ADR-002: PBKDF2-SHA256 Key Derivation (100,000 rounds)</span>
-                      <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">APPROVED</span>
+                  {(decisionFilter === "all" || decisionFilter === "approved") && (
+                    <div
+                      onClick={() => setSelectedInspectItem({
+                        title: "ADR-002: PBKDF2-SHA256 Key Derivation (100,000 rounds)",
+                        type: "DECISION_RECORD",
+                        details: "Passphrase encryption derives 256-bit keys using standard PBKDF2-SHA256 for portable .B2M packages.",
+                        hash: "sha256:adr002_pbkdf2_256bit",
+                      })}
+                      className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-xs text-slate-900">ADR-002: PBKDF2-SHA256 Key Derivation (100,000 rounds)</span>
+                        <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">APPROVED</span>
+                      </div>
+                      <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
+                        Passphrase encryption derives 256-bit keys using standard PBKDF2-SHA256 for portable .B2M packages.
+                      </p>
+                      <div className="mt-2.5 text-[10px] text-slate-400 font-mono">Source: turn_84 (ChatGPT export) · Click to view audit lineage →</div>
                     </div>
-                    <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
-                      Passphrase encryption derives 256-bit keys using standard PBKDF2-SHA256 for portable .B2M packages.
-                    </p>
-                    <div className="mt-2.5 text-[10px] text-slate-400 font-mono">Source: turn_84 (ChatGPT export)</div>
-                  </div>
+                  )}
 
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-xs text-slate-900">ADR-003: SHA-256 Deterministic Atom Content Hashing</span>
-                      <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">ACTIVE</span>
+                  {(decisionFilter === "all" || decisionFilter === "active") && (
+                    <div
+                      onClick={() => setSelectedInspectItem({
+                        title: "ADR-003: SHA-256 Deterministic Atom Content Hashing",
+                        type: "DECISION_RECORD",
+                        details: "All decomposed statements receive deterministic SHA-256 hashes to guarantee provenance integrity.",
+                        hash: "sha256:adr003_deterministic_hashing",
+                      })}
+                      className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-xs text-slate-900">ADR-003: SHA-256 Deterministic Atom Content Hashing</span>
+                        <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">ACTIVE</span>
+                      </div>
+                      <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
+                        All decomposed statements receive deterministic SHA-256 hashes to guarantee provenance integrity.
+                      </p>
+                      <div className="mt-2.5 text-[10px] text-slate-400 font-mono">Source: turn_31 (Gemini export) · Click to view audit lineage →</div>
                     </div>
-                    <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
-                      All decomposed statements receive deterministic SHA-256 hashes to guarantee provenance integrity.
-                    </p>
-                    <div className="mt-2.5 text-[10px] text-slate-400 font-mono">Source: turn_31 (Gemini export)</div>
-                  </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* 11. DISCOVER */}
+            {/* 11. DISCOVER (Resurfaced Gold with Interactive Revive) */}
             {activeTab === "discover" && (
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div>
@@ -923,7 +1291,14 @@ export function HeroDashboardPreview() {
                     </p>
                     <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500 font-mono pt-2 border-t border-indigo-100/80">
                       <span>Found in: Claude_export_May.zip / turn_42</span>
-                      <button className="text-indigo-600 font-semibold hover:underline">Revive into Project →</button>
+                      <button
+                        onClick={() => handleReviveGold(1)}
+                        className={`font-semibold transition-colors ${
+                          revivedGold.includes(1) ? "text-emerald-600" : "text-indigo-600 hover:underline"
+                        }`}
+                      >
+                        {revivedGold.includes(1) ? "✓ Revived into Project" : "Revive into Project →"}
+                      </button>
                     </div>
                   </div>
 
@@ -938,7 +1313,17 @@ export function HeroDashboardPreview() {
                     <p className="mt-2 text-xs text-slate-700 leading-relaxed">
                       &quot;Zero-Latency Bloom Filter Index specification for instantaneous sub-millisecond local message scans.&quot;
                     </p>
-                    <div className="mt-3 text-[10px] text-slate-400 font-mono">Found in: ChatGPT_export_2024.zip / turn_18</div>
+                    <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500 font-mono pt-2 border-t border-slate-100">
+                      <span>Found in: ChatGPT_export_2024.zip / turn_18</span>
+                      <button
+                        onClick={() => handleReviveGold(2)}
+                        className={`font-semibold transition-colors ${
+                          revivedGold.includes(2) ? "text-emerald-600" : "text-blue-600 hover:underline"
+                        }`}
+                      >
+                        {revivedGold.includes(2) ? "✓ Revived into Project" : "Revive into Project →"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -980,37 +1365,55 @@ export function HeroDashboardPreview() {
               </div>
             )}
 
-            {/* 13. EXPERIMENTS */}
+            {/* 13. EXPERIMENTS (Interactive Benchmark Simulator) */}
             {activeTab === "experiments" && (
               <div className="space-y-6 animate-in fade-in duration-200">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-                    Intelligence Experiments & Benchmarks
-                  </h2>
-                  <p className="mt-1 text-xs sm:text-sm text-slate-500">
-                    A/B test runs on local tokenizers, ONNX models, and WebRTC mesh sync performance.
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+                      Intelligence Experiments & Benchmarks
+                    </h2>
+                    <p className="mt-1 text-xs sm:text-sm text-slate-500">
+                      A/B test runs on local tokenizers, ONNX models, and WebRTC mesh sync performance.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleRunBenchmark}
+                    disabled={isBenchmarking}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    <Play className="size-3 fill-current" />
+                    <span>{isBenchmarking ? "Running Benchmark..." : "Run Benchmark"}</span>
+                  </button>
                 </div>
 
                 <div className="space-y-3">
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
+                  <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-xs text-slate-900">ONNX WebAssembly Model Latency (Qwen2.5-0.5B)</span>
-                      <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">RUNNING</span>
+                      <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                        {isBenchmarking ? "BENCHMARKING..." : "ONLINE"}
+                      </span>
                     </div>
-                    <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
+                    <p className="text-xs text-slate-600 leading-relaxed">
                       Benchmarking client-side embedding generation with WebAssembly ONNX runtime.
                     </p>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-center text-xs bg-slate-50 p-2 rounded-lg font-mono">
-                      <div><span className="text-slate-400 text-[10px]">Turn Latency:</span> <b>14.2ms</b></div>
-                      <div><span className="text-slate-400 text-[10px]">Memory Envelope:</span> <b>380MB</b></div>
+                    <div className="grid grid-cols-2 gap-2 text-center text-xs bg-slate-50 p-2.5 rounded-lg font-mono">
+                      <div>
+                        <span className="text-slate-400 text-[10px]">Turn Latency:</span>{" "}
+                        <b className="text-emerald-700">{benchmarkResult ? `${benchmarkResult}ms` : "14.2ms"}</b>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[10px]">Memory Envelope:</span>{" "}
+                        <b className="text-slate-800">380MB</b>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 14. BRAIN2MISSIONS */}
+            {/* 14. BRAIN2MISSIONS (Live Pipeline Control) */}
             {activeTab === "missions" && (
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between">
@@ -1052,7 +1455,7 @@ export function HeroDashboardPreview() {
               </div>
             )}
 
-            {/* 15. OUTPUTS & REPORTS */}
+            {/* 15. OUTPUTS & REPORTS (Interactive Download Simulation) */}
             {activeTab === "outputs" && (
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div>
@@ -1070,9 +1473,12 @@ export function HeroDashboardPreview() {
                       <div className="text-xs font-bold text-slate-900">Quarterly Intelligence Briefing & Proofs</div>
                       <div className="text-[10px] text-slate-400 font-mono mt-0.5">PDF + .B2M portable bundle · 4.2 MB</div>
                     </div>
-                    <button className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-blue-600 transition-colors">
+                    <button
+                      onClick={() => handleCopyText("Downloaded Quarterly Intelligence Proof Bundle: ai-miner-web-2026.b2m")}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-blue-600 transition-colors"
+                    >
                       <Download className="size-3" />
-                      <span>Download</span>
+                      <span>{copiedContext ? "Exported ✓" : "Download"}</span>
                     </button>
                   </div>
 
@@ -1081,11 +1487,64 @@ export function HeroDashboardPreview() {
                       <div className="text-xs font-bold text-slate-900">Provenance Hash Audit Log (1,480 Atoms)</div>
                       <div className="text-[10px] text-slate-400 font-mono mt-0.5">Cryptographic verification CSV · 840 KB</div>
                     </div>
-                    <button className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                    <button
+                      onClick={() => handleCopyText("Exported CSV Audit Log: 1,480 atoms with verified SHA-256 hashes.")}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
                       <Download className="size-3" />
-                      <span>Export CSV</span>
+                      <span>{copiedContext ? "Exported ✓" : "Export CSV"}</span>
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* SLIDE-IN INSPECTOR MODAL DRAWER (When inspecting any item) */}
+            {selectedInspectItem && (
+              <div className="absolute inset-0 bg-white/95 backdrop-blur-md p-6 z-20 flex flex-col justify-between animate-in slide-in-from-right-4 duration-200">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700">
+                        {selectedInspectItem.type}
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-900">{selectedInspectItem.title}</h3>
+                    </div>
+                    <button
+                      onClick={() => setSelectedInspectItem(null)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="rounded-xl bg-slate-50 p-3.5 border border-slate-200/70 text-xs text-slate-700 leading-relaxed">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        Synthesized Rationale & Provenance
+                      </div>
+                      {selectedInspectItem.details}
+                    </div>
+
+                    <div className="rounded-xl bg-slate-900 p-3 text-[11px] font-mono text-emerald-400 flex items-center justify-between">
+                      <div className="truncate pr-2">
+                        <span className="text-slate-400">Hash: </span>
+                        {selectedInspectItem.hash}
+                      </div>
+                      <span className="text-[10px] text-emerald-300 font-sans font-semibold bg-emerald-950 px-2 py-0.5 rounded">
+                        Verified ✓
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 flex justify-end">
+                  <button
+                    onClick={() => setSelectedInspectItem(null)}
+                    className="rounded-lg bg-slate-900 text-white px-4 py-1.5 text-xs font-semibold hover:bg-blue-600 transition-colors"
+                  >
+                    Close Inspector
+                  </button>
                 </div>
               </div>
             )}

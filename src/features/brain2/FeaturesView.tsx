@@ -199,7 +199,7 @@ const faqs = [
 
 export function FeaturesView() {
   const [activeTab, setActiveTab] = useState("search");
-  const [searchQuery, setSearchQuery] = useState("PBKDF2");
+  const [searchQuery] = useState("PBKDF2");
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [copiedContext, setCopiedContext] = useState(false);
 
@@ -270,7 +270,7 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 2. INTERACTIVE FEATURE PLAYGROUND                         */}
       {/* ========================================================= */}
-      <section className="px-6 py-10 max-w-5xl mx-auto">
+      <section className="px-0 py-10 w-[94%] max-w-6xl mx-auto">
         <div className="rounded-3xl border border-slate-200/80 bg-white/70 p-5 sm:p-8 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
           {/* Header */}
           <div className="text-center max-w-xl mx-auto mb-7">
@@ -341,35 +341,6 @@ export function FeaturesView() {
             {/* PREVIEW 1: SEARCH SIMULATOR */}
             {activeTab === "search" && (
               <div className="space-y-3">
-                {/* Search Bar Input */}
-                <div className="relative">
-                  <Search className="size-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search across all conversations..."
-                    className="w-full pl-9 pr-24 py-2 text-xs bg-white border border-slate-200/90 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs font-normal"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60">
-                    0.4ms
-                  </span>
-                </div>
-
-                {/* Quick Search Chips */}
-                <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                  <span>Try:</span>
-                  {["PBKDF2", "Decompression", "Quantization", "Schema"].map((chip) => (
-                    <button
-                      key={chip}
-                      onClick={() => setSearchQuery(chip)}
-                      className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700 hover:border-blue-300 transition-colors font-normal text-[10px]"
-                    >
-                      {chip}
-                    </button>
-                  ))}
-                </div>
-
                 {/* Result Items */}
                 <div className="space-y-2 mt-2">
                   {filteredResults.length > 0 ? (
@@ -512,7 +483,7 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 3. CORE FEATURE CARDS (CLEAN & MINIMAL GRID)              */}
       {/* ========================================================= */}
-      <section className="px-6 py-12 max-w-5xl mx-auto">
+      <section className="px-0 py-12 w-[94%] max-w-6xl mx-auto">
         <div className="text-center max-w-2xl mx-auto mb-10">
           <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
             Feature Breakdown
@@ -566,7 +537,7 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 4. PRIVACY BLUEPRINT STRIP                                */}
       {/* ========================================================= */}
-      <section className="px-6 py-12 max-w-5xl mx-auto">
+      <section className="px-0 py-12 w-[94%] max-w-6xl mx-auto">
         <div className="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-slate-50/60 via-white to-slate-50/40 p-6 sm:p-9 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
           <div className="text-center max-w-xl mx-auto mb-8">
             <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
@@ -617,7 +588,7 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 5. FREQUENTLY ASKED QUESTIONS (ACCORDION)                 */}
       {/* ========================================================= */}
-      <section className="px-6 py-12 max-w-3xl mx-auto">
+      <section className="px-0 py-12 w-[94%] max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
             Questions & Answers
@@ -665,12 +636,8 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 6. CALL TO ACTION                                         */}
       {/* ========================================================= */}
-      <section className="px-6 py-14 text-center max-w-4xl mx-auto mb-14">
+      <section className="px-0 py-14 text-center w-[94%] max-w-6xl mx-auto mb-14">
         <div className="rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50/60 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-0.5 text-xs font-normal text-blue-700 mb-3">
-            <Sparkles className="size-3" />
-            <span>Ready in 30 Seconds</span>
-          </div>
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-normal text-slate-900 tracking-tight leading-[1.2]">
             Start exploring all features today.
           </h2>

@@ -704,24 +704,24 @@ export function Brain2Dashboard() {
             </Badge>
           </CardHeader>
           <CardContent className="p-4 sm:p-5 space-y-4">
-            <div className="grid grid-cols-5 gap-2">
-              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 text-center min-w-0">
                 <div className="font-tight text-xl font-black text-slate-700">{missionCounts.READY}</div>
                 <div className="text-[9px] font-bold uppercase text-slate-500">READY</div>
               </div>
-              <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-2.5 text-center">
+              <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-2.5 text-center min-w-0">
                 <div className="font-tight text-xl font-black text-blue-700">{missionCounts.RUNNING}</div>
                 <div className="text-[9px] font-bold uppercase text-blue-600">RUNNING</div>
               </div>
-              <div className="rounded-xl border border-violet-200 bg-violet-50/80 p-2.5 text-center">
+              <div className="rounded-xl border border-violet-200 bg-violet-50/80 p-2.5 text-center min-w-0">
                 <div className="font-tight text-xl font-black text-violet-700">{missionCounts.VERIFYING}</div>
                 <div className="text-[9px] font-bold uppercase text-violet-600">VERIFYING</div>
               </div>
-              <div className="rounded-xl border border-rose-200 bg-rose-50/80 p-2.5 text-center">
+              <div className="rounded-xl border border-rose-200 bg-rose-50/80 p-2.5 text-center min-w-0">
                 <div className="font-tight text-xl font-black text-rose-700">{missionCounts.BLOCKED}</div>
                 <div className="text-[9px] font-bold uppercase text-rose-600">BLOCKED</div>
               </div>
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-2.5 text-center">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-2.5 text-center min-w-0 col-span-2 sm:col-span-1 lg:col-span-1">
                 <div className="font-tight text-xl font-black text-emerald-700">{missionCounts.COMPLETED}</div>
                 <div className="text-[9px] font-bold uppercase text-emerald-600">COMMITTED</div>
               </div>
@@ -789,34 +789,34 @@ export function Brain2Dashboard() {
             )}
           </CardHeader>
           <CardContent className="p-4 sm:p-5 space-y-4">
-            <div className="grid grid-cols-5 gap-1.5 items-center">
-              <div className="rounded-xl border border-slate-200 bg-white p-2 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 items-center">
+              <div className="rounded-xl border border-slate-200 bg-white p-2 text-center min-w-0">
                 <span className="text-[8px] font-black text-slate-400 uppercase">SOURCE</span>
-                <b className="block text-xs font-bold text-slate-900 mt-0.5">
+                <b className="block text-xs font-bold text-slate-900 mt-0.5 truncate">
                   {snapshot.storage.totalMessages.toLocaleString()}
                 </b>
                 <small className="text-[8px] text-slate-400">messages</small>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-2 text-center">
+              <div className="rounded-xl border border-slate-200 bg-white p-2 text-center min-w-0">
                 <span className="text-[8px] font-black text-slate-400 uppercase">ATOMIZE</span>
-                <b className="block text-xs font-bold text-slate-900 mt-0.5">
+                <b className="block text-xs font-bold text-slate-900 mt-0.5 truncate">
                   {snapshot.storage.totalAtoms.toLocaleString()}
                 </b>
                 <small className="text-[8px] text-slate-400">atoms</small>
               </div>
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-2 text-center">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-2 text-center min-w-0">
                 <span className="text-[8px] font-black text-emerald-600 uppercase">TRUTH</span>
-                <b className="block text-xs font-bold text-emerald-700 mt-0.5">{acceptedTruths}</b>
+                <b className="block text-xs font-bold text-emerald-700 mt-0.5 truncate">{acceptedTruths}</b>
                 <small className="text-[8px] text-emerald-600">current</small>
               </div>
-              <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-2 text-center">
+              <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-2 text-center min-w-0">
                 <span className="text-[8px] font-black text-violet-600 uppercase">PATTERNS</span>
-                <b className="block text-xs font-bold text-violet-700 mt-0.5">{snapshot.patterns.length}</b>
+                <b className="block text-xs font-bold text-violet-700 mt-0.5 truncate">{snapshot.patterns.length}</b>
                 <small className="text-[8px] text-violet-600">signals</small>
               </div>
-              <div className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-2 text-center">
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-2 text-center min-w-0 col-span-2 sm:col-span-1 lg:col-span-1">
                 <span className="text-[8px] font-black text-cyan-600 uppercase">EXPERTISE</span>
-                <b className="block text-xs font-bold text-cyan-700 mt-0.5">{snapshot.portableExpertise.length}</b>
+                <b className="block text-xs font-bold text-cyan-700 mt-0.5 truncate">{snapshot.portableExpertise.length}</b>
                 <small className="text-[8px] text-cyan-600">portable</small>
               </div>
             </div>
