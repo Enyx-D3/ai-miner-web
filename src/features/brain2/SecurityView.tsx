@@ -1,33 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
-  ArrowRight,
   Check,
   CheckCircle2,
-  ChevronDown,
   Cpu,
   Database,
   EyeOff,
   FileCheck2,
   HardDrive,
   KeyRound,
-  Lock,
-  LockKeyhole,
-  Radio,
-  RefreshCw,
-  Search,
-  Shield,
-  ShieldAlert,
   ShieldCheck,
-  Sparkles,
-  Terminal,
-  Upload,
   WifiOff,
-  X,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 interface SecurityPillar {
   icon: React.ElementType;
@@ -128,34 +113,8 @@ const securityComparison = [
   },
 ];
 
-const securityFaqs = [
-  {
-    question: "Can OpenAI, Anthropic, or Google see my Brain2 data?",
-    answer:
-      "No. Brain2 operates entirely inside your local browser runtime. When you drop an export ZIP from ChatGPT, Claude, or Gemini, the file is parsed inside volatile WebAssembly memory. Not a single byte is ever transmitted to OpenAI, Anthropic, Google, or our servers.",
-  },
-  {
-    question: "How does the .B2M encrypted vault protect my information?",
-    answer:
-      "When you choose to export your memory vault, Brain2 uses native W3C Web Crypto APIs to derive a 256-bit AES-GCM key from your passphrase using 200,000 PBKDF2 rounds with a cryptographically secure random salt. The passphrase and master key never leave your device's RAM.",
-  },
-  {
-    question: "What happens if I use Brain2 without an internet connection?",
-    answer:
-      "Brain2 is built as a Progressive Web App (PWA) with complete offline-first support. Once loaded in your browser, search (0.4ms), project organization, LifeWiki reading, and vault decryption work flawlessly with zero active internet connection.",
-  },
-  {
-    question: "How does SHA-256 cryptographic provenance prevent hallucinations?",
-    answer:
-      "Every atom (Decision, Constraint, Fact, or Task) extracted by Brain2 contains a canonical SHA-256 hash of the exact message turn it came from. If an AI assistant generates code based on your memory, you can click on any claim to see the original conversation with line-by-line verification.",
-  },
-];
-
 export function SecurityView() {
-  const [activeTab, setActiveTab] = useState<"encryptor" | "radar" | "lineage">("encryptor");
-  const [mockPassphrase, setMockPassphrase] = useState("my-super-secret-vault-key");
-  const [isEncrypted, setIsEncrypted] = useState(true);
-  const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [activeTab, setActiveTab] = useState<"radar" | "lineage">("radar");
 
   return (
     <div className="relative min-h-screen bg-[#fafcff] text-slate-900 selection:bg-blue-600 selection:text-white font-sans overflow-hidden">
@@ -233,16 +192,6 @@ export function SecurityView() {
             {/* Mode Switcher */}
             <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl self-start sm:self-auto">
               <button
-                onClick={() => setActiveTab("encryptor")}
-                className={`px-3.5 py-1.5 text-xs rounded-lg transition-all ${
-                  activeTab === "encryptor"
-                    ? "bg-white text-blue-600 shadow-2xs font-normal"
-                    : "text-slate-600 hover:text-slate-900 font-normal"
-                }`}
-              >
-                Vault Encryptor
-              </button>
-              <button
                 onClick={() => setActiveTab("radar")}
                 className={`px-3.5 py-1.5 text-xs rounded-lg transition-all ${
                   activeTab === "radar"
@@ -265,101 +214,7 @@ export function SecurityView() {
             </div>
           </div>
 
-          {/* TAB 1: VAULT ENCRYPTOR */}
-          {activeTab === "encryptor" && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6 items-stretch">
-              <div className="lg:col-span-6 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-6 flex flex-col justify-between">
-                <div>
-                  <span className="text-[10px] font-normal uppercase tracking-wider text-slate-500">
-                    Step 1: Your Passphrase (Volatile RAM)
-                  </span>
-                  <p className="mt-2 text-xs text-slate-600 font-normal leading-relaxed">
-                    Type a sample passphrase below to see how Web Crypto derives a 256-bit encryption key on-the-fly without sending anything across the internet.
-                  </p>
-
-                  <div className="mt-4 space-y-3">
-                    <div>
-                      <label className="text-[11px] font-normal text-slate-500 block mb-1">
-                        Vault Passphrase:
-                      </label>
-                      <input
-                        type="text"
-                        value={mockPassphrase}
-                        onChange={(e) => setMockPassphrase(e.target.value)}
-                        className="w-full px-3.5 py-2 text-xs font-mono bg-white border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                      />
-                    </div>
-
-                    <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/70 p-3.5 text-xs space-y-1.5 font-normal">
-                      <div className="text-emerald-900 font-medium flex items-center gap-1.5">
-                        <CheckCircle2 className="size-3.5 text-emerald-600" />
-                        <span>Key Derivation Details</span>
-                      </div>
-                      <div className="text-[11px] text-emerald-800 font-mono">
-                        Algorithm: PBKDF2 · SHA-256
-                      </div>
-                      <div className="text-[11px] text-emerald-800 font-mono">
-                        Rounds: 200,000 iterations
-                      </div>
-                      <div className="text-[11px] text-emerald-800 font-mono">
-                        Key Output: AES-256-GCM (Non-extractable)
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500 font-normal">
-                  <span>Web Cryptography API</span>
-                  <span className="text-emerald-600 font-normal">0.3ms Execution Time</span>
-                </div>
-              </div>
-
-              <div className="lg:col-span-6 rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-50/40 via-white to-indigo-50/30 p-6 flex flex-col justify-between shadow-xs">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-normal uppercase tracking-wider text-blue-700">
-                      Step 2: Authenticated Payload Snapshot
-                    </span>
-                    <span className="font-mono text-[10px] bg-blue-100/70 text-blue-800 px-2.5 py-0.5 rounded font-normal">
-                      .B2M Vault
-                    </span>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 font-mono text-xs text-slate-200 overflow-x-auto shadow-inner leading-relaxed">
-                    <div className="text-slate-400 mb-1">// Encrypted .B2M Binary Container</div>
-                    <div className="text-emerald-400">
-                      &quot;magic&quot;: &quot;B2M_VAULT_V1&quot;,
-                    </div>
-                    <div className="text-blue-300">
-                      &quot;salt&quot;: &quot;0f8a4e12c5b9... (16 bytes)&quot;,
-                    </div>
-                    <div className="text-purple-300">
-                      &quot;iv&quot;: &quot;9c3a1d4f... (12 bytes)&quot;,
-                    </div>
-                    <div className="text-amber-300">
-                      &quot;tag&quot;: &quot;7e2d9b1a... (128-bit tag)&quot;,
-                    </div>
-                    <div className="text-slate-300">
-                      &quot;payload&quot;: &quot;U2FsdGVkX1+vM... [AES-256 Cipher]&quot;
-                    </div>
-                  </div>
-
-                  <p className="mt-3 text-xs text-slate-600 font-normal leading-relaxed">
-                    The resulting .B2M file is self-contained. Anyone without your passphrase sees only high-entropy random bytes.
-                  </p>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-normal">
-                  <span className="flex items-center gap-1.5 text-emerald-700 font-normal">
-                    <Check className="size-3.5 text-emerald-600" /> 100% Client-Side Encryption
-                  </span>
-                  <span className="font-mono text-[10px]">Zero Cloud Leaks</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: NETWORK RADAR */}
+          {/* TAB 1: NETWORK RADAR */}
           {activeTab === "radar" && (
             <div className="mt-6 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-6 sm:p-8">
               <div className="max-w-2xl mb-6">
@@ -499,7 +354,7 @@ export function SecurityView() {
       {/* ========================================================= */}
       {/* 4. SECURITY & PRIVACY COMPARISON MATRIX                   */}
       {/* ========================================================= */}
-      <section className="px-0 py-16 w-[94%] max-w-6xl mx-auto">
+      <section className="px-0 pt-16 pb-24 w-[94%] max-w-6xl mx-auto">
         <div className="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-slate-50/60 via-white to-slate-50/40 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
           <div className="text-center max-w-xl mx-auto mb-10">
             <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
@@ -537,95 +392,6 @@ export function SecurityView() {
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-      </section>
-
-      {/* ========================================================= */}
-      {/* 5. USER-FRIENDLY SECURITY QUESTIONS & ANSWERS (ACCORDION) */}
-      {/* ========================================================= */}
-      <section className="px-0 py-16 w-[94%] max-w-4xl mx-auto">
-        <div className="text-center max-w-2xl mx-auto mb-10">
-          <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
-            Common Inquiries
-          </span>
-          <h2 className="mt-3 text-3xl sm:text-4xl lg:text-[40px] font-normal tracking-tight text-slate-900 leading-tight">
-            Security & Privacy Q&A
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-base font-normal leading-relaxed text-slate-600">
-            Clear, transparent answers to help you understand how your privacy is guaranteed.
-          </p>
-        </div>
-
-        <div className="space-y-3">
-          {securityFaqs.map((faq, idx) => {
-            const isOpen = openFaq === idx;
-            return (
-              <div
-                key={faq.question}
-                className="rounded-2xl border border-white/90 bg-white/80 shadow-sm backdrop-blur-xl transition-all duration-200 overflow-hidden"
-              >
-                <button
-                  onClick={() => setOpenFaq(isOpen ? null : idx)}
-                  className="w-full flex items-center justify-between p-5 text-left transition-colors hover:bg-slate-50/50"
-                >
-                  <span className="text-sm sm:text-base font-normal text-slate-900 pr-4">
-                    {faq.question}
-                  </span>
-                  <div
-                    className={`flex size-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-transform duration-200 ${
-                      isOpen ? "rotate-180 bg-blue-50 text-blue-600" : ""
-                    }`}
-                  >
-                    <ChevronDown className="size-3.5" />
-                  </div>
-                </button>
-                {isOpen && (
-                  <div className="px-5 pb-5 pt-1 text-xs sm:text-sm font-normal text-slate-600 leading-relaxed border-t border-slate-100">
-                    {faq.answer}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ========================================================= */}
-      {/* 6. CALL TO ACTION                                         */}
-      {/* ========================================================= */}
-      <section
-        className="relative overflow-hidden px-6 py-28 text-center font-normal"
-        style={{
-          background: "radial-gradient(circle at 50% 50%, #ffffff 0%, #f8fbff 100%)",
-        }}
-      >
-        <div className="mx-auto flex max-w-3xl flex-col items-center font-normal">
-          <h2 className="mt-6 text-4xl sm:text-5xl lg:text-[54px] font-normal tracking-tight leading-tight text-slate-900">
-            Your intelligence, strictly yours.
-          </h2>
-          <p className="mt-5 max-w-2xl text-base sm:text-lg font-normal leading-relaxed text-slate-600">
-            Open the local workspace, import an AI history export, and verify complete provenance with zero forced cloud storage.
-          </p>
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-4 font-normal">
-            <Button
-              asChild
-              size="lg"
-              className="h-13 rounded-full bg-slate-900 px-8 text-base font-normal text-white shadow-sm transition-all hover:bg-blue-600 hover:scale-105 active:scale-95"
-            >
-              <Link href="/dashboard" className="flex items-center gap-2.5">
-                <span>Open AI Miner Workspace</span>
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-            <Button
-              asChild
-              size="lg"
-              variant="outline"
-              className="h-13 rounded-full border-slate-200/90 bg-white/80 px-8 text-base font-normal text-slate-800 shadow-sm backdrop-blur-md transition-all hover:bg-white hover:text-blue-600 hover:scale-105 active:scale-95"
-            >
-              <Link href="/memory">Import AI history</Link>
-            </Button>
           </div>
         </div>
       </section>

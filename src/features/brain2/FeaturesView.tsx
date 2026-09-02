@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
   Atom,
   BookOpen,
@@ -18,10 +17,8 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
-  Upload,
   UploadCloud,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 interface InteractiveFeature {
   id: string;
@@ -521,37 +518,6 @@ export function FeaturesView() {
                 </p>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ========================================================= */}
-      {/* 5. CALL TO ACTION                                         */}
-      {/* ========================================================= */}
-      <section
-        className="relative overflow-hidden px-6 py-28 text-center font-normal"
-        style={{
-          background: "radial-gradient(circle at 50% 50%, #ffffff 0%, #f8fbff 100%)",
-        }}
-      >
-        <div className="mx-auto flex max-w-3xl flex-col items-center font-normal">
-          <h2 className="mt-6 text-4xl sm:text-5xl lg:text-[54px] font-normal tracking-tight leading-tight text-slate-900">
-            Start exploring all features today.
-          </h2>
-          <p className="mt-5 max-w-2xl text-base sm:text-lg font-normal leading-relaxed text-slate-600">
-            Drop your conversation ZIP archive and see your personal intelligence hub come alive with zero cloud setup.
-          </p>
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-4 font-normal">
-            <Button
-              asChild
-              size="lg"
-              className="h-13 rounded-full bg-slate-900 px-8 text-base font-normal text-white shadow-sm transition-all hover:bg-blue-600 hover:scale-105 active:scale-95"
-            >
-              <Link href="/memory" className="flex items-center gap-2.5">
-                <Upload className="size-4" />
-                <span>Import AI history</span>
-              </Link>
-            </Button>
           </div>
         </div>
       </section>
