@@ -8,7 +8,6 @@ import {
   BookOpen,
   BrainCircuit,
   CheckCircle2,
-  ChevronDown,
   Database,
   FileCheck2,
   FolderKanban,
@@ -91,32 +90,8 @@ const guarantees = [
   },
 ];
 
-const faqs = [
-  {
-    q: "What is Brain2 AI Miner?",
-    a: "Brain2 AI Miner is a privacy-first, local intelligence workspace that ingests your scattered ChatGPT, Claude, and Gemini export archives and turns them into organized project contexts, decisions, evidence lineage, and executable intelligence.",
-  },
-  {
-    q: "Is my AI conversation data uploaded to external servers?",
-    a: "No. All ingestion, parsing, atomization, search indexing, and project resolution execute entirely within your browser environment using IndexedDB. Your raw chats and memory never leave your device without your explicit export.",
-  },
-  {
-    q: "How does the .B2M export format work?",
-    a: "The .B2M format is a portable, self-contained snapshot of your reconstructed memory. You can optionally protect it with a passphrase, which encrypts the archive locally using PBKDF2-SHA256 and AES-256-GCM before downloading.",
-  },
-  {
-    q: "What formats and AI providers are currently supported?",
-    a: "AI Miner natively parses ZIP data exports from OpenAI ChatGPT (conversations.json), Anthropic Claude, and Google Gemini, normalizing them into canonical message trees while retaining all metadata.",
-  },
-  {
-    q: "How does evidence provenance and verification work?",
-    a: "Every synthesized candidate, project summary, or extracted decision links directly back to the original source conversation turn, complete with cryptographic hash verification and timestamped evidence.",
-  },
-];
-
 export default function Brain2Landing() {
   const [activeTab, setActiveTab] = useState<"chat" | "atoms" | "lineage">("chat");
-  const [openFaq, setOpenFaq] = useState<number | null>(0);
   const ctaRef = useRef<HTMLElement>(null);
 
   const handleCtaMouseMove = (e: React.MouseEvent<HTMLElement>) => {
@@ -583,54 +558,7 @@ export default function Brain2Landing() {
       </section>
 
       {/* ========================================================= */}
-      {/* SECTION 7: INTERACTIVE FAQ ACCORDION                     */}
-      {/* ========================================================= */}
-      <section className="relative px-6 py-28 lg:px-8 font-normal">
-        <div className="mx-auto max-w-4xl">
-          <div className="text-center">
-            <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
-              Got questions?
-            </span>
-            <h2 className="mt-3 text-3xl sm:text-4xl font-normal tracking-tight text-slate-900">
-              Frequently asked questions
-            </h2>
-          </div>
-
-          <div className="mt-12 divide-y divide-slate-200/70 border-y border-slate-200/70">
-            {faqs.map((faq, index) => {
-              const isOpen = openFaq === index;
-              return (
-                <div key={faq.q} className="py-5">
-                  <button
-                    onClick={() => setOpenFaq(isOpen ? null : index)}
-                    className="flex w-full items-center justify-between text-left transition-colors hover:text-blue-600 font-normal"
-                  >
-                    <span className="text-base sm:text-lg font-normal text-slate-900">
-                      {faq.q}
-                    </span>
-                    <span
-                      className={`ml-4 flex size-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-transform duration-200 ${
-                        isOpen ? "rotate-180 bg-blue-50 text-blue-600 border-blue-200" : ""
-                      }`}
-                    >
-                      <ChevronDown className="size-4" />
-                    </span>
-                  </button>
-
-                  {isOpen && (
-                    <div className="mt-3 animate-in fade-in slide-in-from-top-1 duration-200 text-sm font-normal leading-relaxed text-slate-600">
-                      {faq.a}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ========================================================= */}
-      {/* SECTION 8: FINAL CTA                                     */}
+      {/* SECTION 7: FINAL CTA                                     */}
       {/* ========================================================= */}
       <section
         className="relative overflow-hidden px-6 py-28 text-center font-normal"

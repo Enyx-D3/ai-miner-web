@@ -3,45 +3,24 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  ArrowRight,
   Atom,
-  Binary,
   BookOpen,
   BrainCircuit,
   Check,
   CheckCircle2,
-  ChevronDown,
-  Clock,
-  Copy,
   Cpu,
   Database,
-  ExternalLink,
-  FileCheck2,
-  FileCode2,
-  FileSearch,
   FileText,
-  Filter,
-  Flame,
   FolderKanban,
-  FolderTree,
-  KeyRound,
-  Layers,
-  Lightbulb,
-  ListChecks,
   Lock,
   LockKeyhole,
-  MessageSquare,
   Network,
-  Radio,
   Search,
   ShieldCheck,
   Sparkles,
   Target,
-  Terminal,
   Upload,
   UploadCloud,
-  Workflow,
-  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -178,29 +157,9 @@ const sampleSearchResults = [
   },
 ];
 
-const faqs = [
-  {
-    q: "How does the search engine work without a cloud database?",
-    a: "Brain2 builds a high-performance local inverted index directly in browser IndexedDB. When you search, queries execute in a background Web Worker in under a millisecond with zero network roundtrips.",
-  },
-  {
-    q: "Can I use Brain2 offline?",
-    a: "Yes! Once loaded, Brain2 is a Progressive Web App that works completely offline. All your imported conversations, atoms, and projects are stored safely in your browser's persistent storage.",
-  },
-  {
-    q: "How does Brain2 resolve conflicting decisions across conversations?",
-    a: "The Truth Engine inspects chronological turn timestamps and semantic lineage. When you confirm a newer architecture decision, the older choice is marked 'SUPERSEDED' with full audit history.",
-  },
-  {
-    q: "What makes the B2JOB context compiler different from regular prompting?",
-    a: "Instead of uploading 50 pages of raw chat transcripts, B2JOB compiles only the verified atoms, active project constraints, and current goals. This reduces prompt token usage by up to 90% while improving reasoning accuracy.",
-  },
-];
-
 export function FeaturesView() {
   const [activeTab, setActiveTab] = useState("search");
   const [searchQuery] = useState("PBKDF2");
-  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [copiedContext, setCopiedContext] = useState(false);
 
   const activeFeature =
@@ -468,7 +427,7 @@ export function FeaturesView() {
                       </>
                     ) : (
                       <>
-                        <Copy className="size-3" />
+                        <Check className="size-3" />
                         <span>Copy Compact AI Context (-90% Tokens)</span>
                       </>
                     )}
@@ -586,55 +545,7 @@ export function FeaturesView() {
       </section>
 
       {/* ========================================================= */}
-      {/* 5. FREQUENTLY ASKED QUESTIONS (ACCORDION)                 */}
-      {/* ========================================================= */}
-      <section className="px-0 py-12 w-[94%] max-w-4xl mx-auto">
-        <div className="text-center mb-8">
-          <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
-            Questions & Answers
-          </span>
-          <h2 className="text-2xl sm:text-3xl font-normal text-slate-900 tracking-tight mt-1.5">
-            Frequently asked questions.
-          </h2>
-          <p className="mt-1.5 text-xs sm:text-sm text-slate-600 font-normal">
-            Everything you need to know about Brain2 features and capabilities.
-          </p>
-        </div>
-
-        <div className="space-y-2.5">
-          {faqs.map((faq, idx) => {
-            const isOpen = openFaqIndex === idx;
-            return (
-              <div
-                key={faq.q}
-                className="rounded-2xl border border-slate-200/80 bg-white overflow-hidden shadow-2xs transition-all"
-              >
-                <button
-                  onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
-                  className="flex w-full items-center justify-between p-4 sm:p-4.5 text-left hover:bg-slate-50/50 transition-colors"
-                >
-                  <span className="text-sm font-normal text-slate-900 pr-3">
-                    {faq.q}
-                  </span>
-                  <ChevronDown
-                    className={`size-4 text-slate-400 shrink-0 transition-transform duration-200 ${
-                      isOpen ? "rotate-180 text-blue-600" : ""
-                    }`}
-                  />
-                </button>
-                {isOpen && (
-                  <div className="px-4 pb-4 sm:px-4.5 sm:pb-4.5 text-xs sm:text-sm text-slate-600 leading-relaxed font-normal border-t border-slate-100 pt-2.5">
-                    {faq.a}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ========================================================= */}
-      {/* 6. CALL TO ACTION                                         */}
+      {/* 5. CALL TO ACTION                                         */}
       {/* ========================================================= */}
       <section className="px-0 py-14 text-center w-[94%] max-w-6xl mx-auto mb-14">
         <div className="rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50/60 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">

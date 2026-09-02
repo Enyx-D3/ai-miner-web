@@ -9,7 +9,6 @@ import {
   BrainCircuit,
   Check,
   CheckCircle2,
-  ChevronDown,
   Clock,
   Copy,
   Cpu,
@@ -229,33 +228,9 @@ const exportGuides = [
   },
 ];
 
-const faqs = [
-  {
-    q: "How do I get started with Brain2 AI Miner?",
-    a: "Getting started takes less than a minute. Export your conversation history from ChatGPT, Claude, or Gemini, open the Brain2 Memory page, and drop the ZIP file. Brain2 will automatically organize your chats, extract decisions, and build your searchable LifeWiki.",
-  },
-  {
-    q: "Is my conversation history uploaded to any cloud server?",
-    a: "No. Brain2 is 100% local-first. All decompression, text analysis, search indexing, and encryption occur strictly inside your web browser using WebAssembly, Web Workers, and IndexedDB. Nothing is ever sent to any remote server or used for AI training.",
-  },
-  {
-    q: "How does Brain2 save 90% of my AI prompt tokens?",
-    a: "Instead of pasting whole 50-page conversation logs into an AI prompt, Brain2 extracts compact 'B2JOB' context packets containing only active architectural decisions, technical constraints, and current goals. This eliminates token bloat and keeps AI answers razor-sharp.",
-  },
-  {
-    q: "What is a .B2M file and how is it protected?",
-    a: "A .B2M file is a portable, self-contained snapshot of your reconstructed memory. You can optionally set a passphrase, which encrypts the file locally using industry-standard PBKDF2-SHA256 (200,000 iterations) with 256-bit AES-GCM before saving.",
-  },
-  {
-    q: "What if I have contradictory decisions across different chats?",
-    a: "Brain2's Truth Engine automatically analyzes the chronological timeline. When an architectural choice is updated in a newer conversation, the older choice is marked as 'SUPERSEDED' with a complete audit history, while the active consensus is tagged as 'CURRENT'.",
-  },
-];
-
 export function HowItWorksView() {
   const [activeScenarioId, setActiveScenarioId] = useState("saas");
   const [activeGuideTab, setActiveGuideTab] = useState("chatgpt");
-  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [copiedText, setCopiedText] = useState(false);
 
   const activeScenario =
@@ -607,55 +582,7 @@ export function HowItWorksView() {
       </section>
 
       {/* ========================================================= */}
-      {/* 5. FREQUENTLY ASKED QUESTIONS (ACCORDION)                 */}
-      {/* ========================================================= */}
-      <section className="px-0 py-12 w-[94%] max-w-4xl mx-auto">
-        <div className="text-center mb-8">
-          <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
-            Questions & Answers
-          </span>
-          <h2 className="text-2xl sm:text-3xl font-normal text-slate-900 tracking-tight mt-1.5">
-            Frequently asked questions.
-          </h2>
-          <p className="mt-1.5 text-xs sm:text-sm text-slate-600 font-normal">
-            Have questions about privacy, file formats, or usage?
-          </p>
-        </div>
-
-        <div className="space-y-2.5">
-          {faqs.map((faq, idx) => {
-            const isOpen = openFaqIndex === idx;
-            return (
-              <div
-                key={faq.q}
-                className="rounded-2xl border border-slate-200/80 bg-white overflow-hidden shadow-2xs transition-all"
-              >
-                <button
-                  onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
-                  className="flex w-full items-center justify-between p-4 sm:p-4.5 text-left hover:bg-slate-50/50 transition-colors"
-                >
-                  <span className="text-sm font-normal text-slate-900 pr-3">
-                    {faq.q}
-                  </span>
-                  <ChevronDown
-                    className={`size-4 text-slate-400 shrink-0 transition-transform duration-200 ${
-                      isOpen ? "rotate-180 text-blue-600" : ""
-                    }`}
-                  />
-                </button>
-                {isOpen && (
-                  <div className="px-4 pb-4 sm:px-4.5 sm:pb-4.5 text-xs sm:text-sm text-slate-600 leading-relaxed font-normal border-t border-slate-100 pt-2.5">
-                    {faq.a}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ========================================================= */}
-      {/* 6. MINIMAL & FRIENDLY CALL TO ACTION                      */}
+      {/* 5. MINIMAL & FRIENDLY CALL TO ACTION                      */}
       {/* ========================================================= */}
       <section className="px-0 py-14 text-center w-[94%] max-w-6xl mx-auto mb-14">
         <div className="rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50/60 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
