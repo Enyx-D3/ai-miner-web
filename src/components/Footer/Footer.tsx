@@ -1,69 +1,150 @@
 import Link from "next/link";
-import { BrainCircuit, Lock, Shield } from "lucide-react";
+import Image from "next/image";
+import { BrainCircuit } from "lucide-react";
 
 export default function Footer() {
   return (
-    <footer className="relative w-full border-t border-slate-200/60 bg-gradient-to-b from-transparent to-slate-50/50 py-12 text-slate-600 font-sans">
+    <footer className="relative w-full border-t border-slate-200/70 bg-gradient-to-b from-[#fafcff] to-slate-50/80 pt-16 pb-12 text-slate-600 font-sans">
       <div className="mx-auto max-w-6xl px-6 lg:px-8">
-        <div className="flex flex-col items-center justify-between gap-8 md:flex-row">
-          {/* Brand */}
-          <div className="flex flex-col items-center md:items-start gap-2">
-            <Link href="/" className="flex items-center gap-2.5">
-              <div className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm">
-                <BrainCircuit className="size-3.5" />
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-10 pb-12 border-b border-slate-200/60">
+          {/* Brand & Mission Statement (5 Columns) */}
+          <div className="md:col-span-5 space-y-4">
+            <Link href="/" className="inline-flex items-center gap-2.5">
+              <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm shadow-blue-500/20">
+                <BrainCircuit className="size-4" />
               </div>
-              <span className="text-sm font-medium tracking-tight text-slate-900">
-                Brain2 AI Miner
-              </span>
+              <div>
+                <span className="block text-sm font-medium tracking-tight text-slate-900 leading-tight">
+                  Brain2 Labs
+                </span>
+                <span className="block text-[9px] font-medium uppercase tracking-wider text-blue-600 leading-tight">
+                  AI Miner
+                </span>
+              </div>
             </Link>
-            <p className="text-xs font-normal text-slate-500 text-center md:text-left">
-              Turn years of AI conversations into local, source-backed intelligence.
+
+            <p className="text-xs font-normal text-slate-500 leading-relaxed max-w-sm">
+              Turn unstructured conversations across ChatGPT, Claude, and Gemini into verifiable, source-backed working memory. 100% browser-native with zero cloud dependencies.
             </p>
+
+            <div className="flex items-center gap-2 pt-1 text-[11px] font-normal text-slate-500">
+              <span className="flex size-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Local-First Architecture · Volatile WebCrypto</span>
+            </div>
           </div>
 
-          {/* Links */}
-          <div className="flex flex-wrap items-center justify-center gap-6 text-xs font-normal text-slate-600">
-            <Link href="/" className="hover:text-blue-600 transition-colors">
-              Product
-            </Link>
-            <Link href="/how-it-works" className="hover:text-blue-600 transition-colors">
-              How It Works
-            </Link>
-            <Link href="/features" className="hover:text-blue-600 transition-colors">
-              Features
-            </Link>
-            <Link href="/pricing" className="hover:text-blue-600 transition-colors">
-              Pricing
-            </Link>
-            <Link href="/security" className="hover:text-blue-600 transition-colors">
-              Security
-            </Link>
-            <Link href="/memory" className="hover:text-blue-600 transition-colors">
-              Import History
-            </Link>
-            <Link href="/dashboard" className="hover:text-blue-600 transition-colors">
-              Open Workspace
-            </Link>
-          </div>
+          {/* Navigation Links Columns (7 Columns) */}
+          <div className="md:col-span-7 grid grid-cols-2 sm:grid-cols-3 gap-8">
+            {/* Column 1: Core Product */}
+            <div className="space-y-3">
+              <div className="text-xs font-normal uppercase tracking-wider text-slate-900">
+                Product
+              </div>
+              <ul className="space-y-2.5 text-xs font-normal">
+                <li>
+                  <Link href="/" className="text-slate-600 hover:text-blue-600 transition-colors">
+                    Overview
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/how-it-works" className="text-slate-600 hover:text-blue-600 transition-colors">
+                    How It Works
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/features" className="text-slate-600 hover:text-blue-600 transition-colors">
+                    Features
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/pricing" className="text-slate-600 hover:text-blue-600 transition-colors">
+                    Pricing
+                  </Link>
+                </li>
+              </ul>
+            </div>
 
-          {/* Status Badge */}
-          <div className="flex items-center gap-2 rounded-full border border-emerald-200/80 bg-emerald-50/80 px-3 py-1 text-[11px] font-medium text-emerald-700 shadow-sm backdrop-blur-md">
-            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Local IndexedDB 100% Active</span>
+            {/* Column 2: Workspace & Security */}
+            <div className="space-y-3">
+              <div className="text-xs font-normal uppercase tracking-wider text-slate-900">
+                Workspace
+              </div>
+              <ul className="space-y-2.5 text-xs font-normal">
+                <li>
+                  <Link href="/memory" className="text-slate-600 hover:text-blue-600 transition-colors">
+                    Import History
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/dashboard" className="text-slate-600 hover:text-blue-600 transition-colors">
+                    AI Miner Workspace
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/security" className="text-slate-600 hover:text-blue-600 transition-colors">
+                    Security & Privacy
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            {/* Column 3: Supported Providers */}
+            <div className="space-y-3">
+              <div className="text-xs font-normal uppercase tracking-wider text-slate-900">
+                Integrations
+              </div>
+              <ul className="space-y-2.5 text-xs font-normal text-slate-600">
+                <li className="flex items-center gap-2">
+                  <div className="flex size-4 shrink-0 items-center justify-center rounded-sm overflow-hidden">
+                    <Image
+                      src="/images/chatgpt.png"
+                      alt="ChatGPT"
+                      width={16}
+                      height={16}
+                      className="size-3.5 object-contain"
+                    />
+                  </div>
+                  <span>ChatGPT (OpenAI)</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="flex size-4 shrink-0 items-center justify-center rounded-sm overflow-hidden">
+                    <Image
+                      src="/images/claude.png"
+                      alt="Claude"
+                      width={16}
+                      height={16}
+                      className="size-3.5 object-contain"
+                    />
+                  </div>
+                  <span>Claude (Anthropic)</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="flex size-4 shrink-0 items-center justify-center rounded-sm overflow-hidden">
+                    <Image
+                      src="/images/gemini.png"
+                      alt="Gemini"
+                      width={16}
+                      height={16}
+                      className="size-3.5 object-contain"
+                    />
+                  </div>
+                  <span>Gemini (Google)</span>
+                </li>
+                <li className="flex items-center gap-2 text-slate-500">
+                  <div className="flex size-4 shrink-0 items-center justify-center">
+                    <span className="text-xs">⚡</span>
+                  </div>
+                  <span>Chrome Extension</span>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col items-center justify-between gap-4 border-t border-slate-200/50 pt-6 text-[11px] font-normal text-slate-400 sm:flex-row">
+        {/* Bottom Copyright */}
+        <div className="mt-8 flex flex-col items-center justify-center text-[11px] font-normal text-slate-400 text-center">
           <div>
-            © {new Date().getFullYear()} Brain2 Labs. Built for deterministic, privacy-first AI intelligence.
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="inline-flex items-center gap-1">
-              <Lock className="size-3 text-slate-400" /> Client-side encrypted
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Shield className="size-3 text-slate-400" /> Source-accounted provenance
-            </span>
+            © {new Date().getFullYear()} Brain2 Labs. All rights reserved.
           </div>
         </div>
       </div>

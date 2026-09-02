@@ -120,7 +120,7 @@ export function PricingView() {
         {/* ========================================================= */}
         {/* 1. HEADER                                                 */}
         {/* ========================================================= */}
-        <div className="pt-6 pb-8 sm:pt-10 sm:pb-10 text-left">
+        <div className="pt-6 pb-14 sm:pt-10 sm:pb-18 lg:pb-20 text-left">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-[72px] font-normal tracking-tight text-slate-900 leading-[1.12] max-w-4xl">
             Plans &{" "}
             <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent font-normal">
@@ -132,7 +132,7 @@ export function PricingView() {
         {/* ========================================================= */}
         {/* 2. LINEAR-STYLE 4-COLUMN PRICING GRID (LIGHT MODE)        */}
         {/* ========================================================= */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-6 items-stretch">
           {pricingTiers.map((tier) => {
             const price = isYearly ? tier.yearlyPrice : tier.monthlyPrice;
 
