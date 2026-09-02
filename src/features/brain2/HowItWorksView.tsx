@@ -4,47 +4,17 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Atom,
-  Bot,
-  BrainCircuit,
   Check,
   CheckCircle2,
-  Clock,
   Copy,
-  Cpu,
-  Database,
-  Download,
-  ExternalLink,
-  Eye,
-  FileCheck2,
-  FileJson,
-  FileSpreadsheet,
   FileText,
-  Filter,
-  Flame,
-  FolderKanban,
   FolderTree,
-  KeyRound,
-  Layers,
-  Lightbulb,
-  ListChecks,
   Lock,
-  LockKeyhole,
-  MessageSquare,
-  Play,
-  Radio,
-  RefreshCw,
   Search,
-  Shield,
   ShieldCheck,
-  Sparkles,
   Target,
-  Terminal,
   Upload,
   UploadCloud,
-  Workflow,
-  X,
-  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -255,42 +225,14 @@ export function HowItWorksView() {
       {/* ========================================================= */}
       {/* 1. HERO SECTION                                           */}
       {/* ========================================================= */}
-      <section className="px-6 pt-28 pb-12 sm:pt-36 sm:pb-14 text-center max-w-3xl mx-auto">
-        {/* Horizon Eyebrow Badge */}
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/60 px-4 py-1.5 shadow-[0_4px_20px_rgba(15,30,60,0.04)] backdrop-blur-xl transition-transform hover:scale-105">
-          <span className="text-xs sm:text-sm font-normal text-slate-700">
-            Brain2 AI Miner · How It Works
-          </span>
-        </div>
-
+      <section className="w-[94%] max-w-6xl mx-auto pt-24 pb-8 sm:pt-32 sm:pb-10 text-left">
         {/* Main Display Headline */}
-        <h1 className="mt-5 text-3xl sm:text-4xl lg:text-[42px] font-normal tracking-tight text-slate-900 leading-[1.18]">
-          How Brain2 transforms your AI conversations into{" "}
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-[72px] font-normal tracking-tight text-slate-900 leading-[1.12] max-w-4xl">
+          From chats to{" "}
           <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent font-normal">
-            usable knowledge.
+            living memory.
           </span>
         </h1>
-
-        {/* Subtitle */}
-        <p className="mt-4 max-w-2xl mx-auto text-sm sm:text-base font-normal leading-relaxed text-slate-600">
-          From unorganized chat logs across ChatGPT, Claude, and Gemini to a clean, searchable personal intelligence hub—processed entirely inside your browser.
-        </p>
-
-        {/* 3 Value Badges */}
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-2.5 sm:gap-4 text-xs text-slate-600 font-normal">
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3 py-1 shadow-2xs">
-            <CheckCircle2 className="size-3.5 text-emerald-600" />
-            <span>No Account or Sign Up</span>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3 py-1 shadow-2xs">
-            <ShieldCheck className="size-3.5 text-blue-600" />
-            <span>Zero Cloud Telemetry</span>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3 py-1 shadow-2xs">
-            <Zap className="size-3.5 text-amber-500" />
-            <span>0.4ms Search Speed</span>
-          </div>
-        </div>
       </section>
 
       {/* ========================================================= */}
@@ -303,11 +245,11 @@ export function HowItWorksView() {
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] font-normal uppercase tracking-wider text-emerald-700">
+                <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
                   Interactive Simulator
                 </span>
               </div>
-              <h2 className="text-lg sm:text-xl lg:text-2xl font-normal text-slate-900 mt-1 tracking-tight">
+              <h2 className="mt-2 text-2xl sm:text-3xl lg:text-[32px] font-normal text-slate-900 tracking-tight leading-tight">
                 See how raw chat turns into structured memory.
               </h2>
             </div>
@@ -320,9 +262,9 @@ export function HowItWorksView() {
                   <button
                     key={scenario.id}
                     onClick={() => setActiveScenarioId(scenario.id)}
-                    className={`px-2.5 py-1 text-xs rounded-lg transition-all ${
+                    className={`px-3 py-1 text-xs rounded-lg transition-all ${
                       isActive
-                        ? "bg-white text-blue-600 shadow-2xs font-medium"
+                        ? "bg-white text-blue-600 shadow-2xs font-normal"
                         : "text-slate-600 hover:text-slate-900 font-normal"
                     }`}
                   >
@@ -343,23 +285,23 @@ export function HowItWorksView() {
                     Input: Raw Conversation Turn
                   </span>
                   <span
-                    className={`text-[10px] font-normal px-2 py-0.5 rounded-full border ${activeScenario.badgeColor}`}
+                    className={`text-[10px] font-normal px-2.5 py-0.5 rounded-full border ${activeScenario.badgeColor}`}
                   >
                     {activeScenario.provider} Export
                   </span>
                 </div>
 
                 {/* User Bubble */}
-                <div className="rounded-xl bg-white border border-slate-200/70 p-3 mb-2.5 shadow-2xs">
-                  <div className="text-[10px] font-medium text-blue-600 mb-0.5">YOU</div>
+                <div className="rounded-xl bg-white border border-slate-200/70 p-3.5 mb-2.5 shadow-2xs">
+                  <div className="text-[10px] font-normal text-blue-600 mb-1">YOU</div>
                   <p className="text-xs text-slate-700 leading-relaxed font-normal">
                     {activeScenario.rawSample.user}
                   </p>
                 </div>
 
                 {/* AI Bubble */}
-                <div className="rounded-xl bg-white border border-slate-200/70 p-3 shadow-2xs">
-                  <div className="text-[10px] font-medium text-purple-600 mb-0.5">
+                <div className="rounded-xl bg-white border border-slate-200/70 p-3.5 shadow-2xs">
+                  <div className="text-[10px] font-normal text-purple-600 mb-1">
                     {activeScenario.provider.toUpperCase()}
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed font-normal">
@@ -386,55 +328,55 @@ export function HowItWorksView() {
               <div>
                 <div className="flex items-center justify-between mb-2.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-blue-700">
+                    <span className="text-[10px] font-normal uppercase tracking-wider text-blue-700">
                       Brain2 Auto-Extracted Intelligence
                     </span>
                   </div>
-                  <span className="font-mono text-[10px] bg-blue-100/70 text-blue-800 px-2 py-0.5 rounded font-medium">
+                  <span className="font-mono text-[10px] bg-blue-100/70 text-blue-800 px-2.5 py-0.5 rounded font-normal">
                     Project: {activeScenario.minedOutput.project}
                   </span>
                 </div>
 
                 {/* Decisions Tag */}
                 <div className="space-y-2">
-                  <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/60 p-2.5 shadow-2xs">
-                    <div className="flex items-center gap-1 text-[10px] font-medium text-emerald-800 uppercase tracking-wider mb-0.5">
+                  <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/60 p-3 shadow-2xs">
+                    <div className="flex items-center gap-1 text-[10px] font-normal text-emerald-800 uppercase tracking-wider mb-0.5">
                       <Target className="size-3 text-emerald-600" />
                       <span>Extracted Architectural Decision</span>
                     </div>
-                    <p className="text-xs font-normal text-emerald-950">
+                    <p className="text-xs font-normal text-emerald-950 leading-relaxed">
                       {activeScenario.minedOutput.decisions[0]}
                     </p>
                   </div>
 
                   {/* Constraints Tag */}
-                  <div className="rounded-xl border border-rose-200/80 bg-rose-50/60 p-2.5 shadow-2xs">
-                    <div className="flex items-center gap-1 text-[10px] font-medium text-rose-800 uppercase tracking-wider mb-0.5">
+                  <div className="rounded-xl border border-rose-200/80 bg-rose-50/60 p-3 shadow-2xs">
+                    <div className="flex items-center gap-1 text-[10px] font-normal text-rose-800 uppercase tracking-wider mb-0.5">
                       <Lock className="size-3 text-rose-600" />
                       <span>Hard Constraint</span>
                     </div>
-                    <p className="text-xs font-normal text-rose-950">
+                    <p className="text-xs font-normal text-rose-950 leading-relaxed">
                       {activeScenario.minedOutput.constraints[0]}
                     </p>
                   </div>
 
                   {/* LifeWiki Summary Box */}
-                  <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xs">
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
                     <div className="flex items-center justify-between mb-0.5">
-                      <div className="flex items-center gap-1 text-[10px] font-medium text-slate-700 uppercase tracking-wider">
+                      <div className="flex items-center gap-1 text-[10px] font-normal text-slate-700 uppercase tracking-wider">
                         <FileText className="size-3 text-blue-600" />
                         <span>LifeWiki Summary</span>
                       </div>
                       <button
                         onClick={handleCopySample}
-                        className="text-[10px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-0.5"
+                        className="text-[10px] text-blue-600 hover:text-blue-800 font-normal flex items-center gap-0.5"
                       >
                         {copiedText ? (
-                          <span className="text-emerald-600 flex items-center gap-0.5">
+                          <span className="text-emerald-600 flex items-center gap-0.5 font-normal">
                             <Check className="size-2.5" /> Copied
                           </span>
                         ) : (
-                          <span className="flex items-center gap-0.5">
+                          <span className="flex items-center gap-0.5 font-normal">
                             <Copy className="size-2.5" /> Copy
                           </span>
                         )}
@@ -448,7 +390,7 @@ export function HowItWorksView() {
               </div>
 
               <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-normal">
-                <span className="flex items-center gap-1 text-emerald-700 font-medium">
+                <span className="flex items-center gap-1 text-emerald-700 font-normal">
                   <CheckCircle2 className="size-3" /> Ready for Search & B2JOB
                 </span>
                 <span className="font-mono text-[10px]">0.4ms Local Parse</span>
@@ -461,60 +403,64 @@ export function HowItWorksView() {
       {/* ========================================================= */}
       {/* 3. FOUR CLEAR STEPS (CLEAN & MINIMAL CARDS)               */}
       {/* ========================================================= */}
-      <section className="px-0 py-12 w-[94%] max-w-6xl mx-auto">
-        <div className="text-center max-w-2xl mx-auto mb-10">
+      <section className="px-0 py-16 w-[94%] max-w-6xl mx-auto">
+        <div className="text-center max-w-2xl mx-auto mb-12">
           <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
             Simple 4-Step Process
           </span>
-          <h2 className="mt-2 text-2xl sm:text-3xl lg:text-[34px] font-normal tracking-tight text-slate-900 leading-[1.2]">
+          <h2 className="mt-3 text-3xl sm:text-4xl lg:text-[40px] font-normal tracking-tight text-slate-900 leading-tight">
             How your memory is structured.
           </h2>
-          <p className="mt-2 text-sm sm:text-base font-normal text-slate-600">
+          <p className="mx-auto mt-4 max-w-2xl text-base font-normal leading-relaxed text-slate-600">
             Clear, transparent, and respectful of your privacy from start to finish.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {steps.map((step) => {
             const Icon = step.icon;
             return (
               <div
                 key={step.num}
-                className="group relative flex flex-col justify-between rounded-3xl border border-slate-200/80 bg-white/70 p-6 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl hover:border-blue-300 transition-all duration-300"
+                className="group relative flex flex-col justify-between rounded-2xl border border-white/80 bg-white/60 p-7 shadow-[0_10px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-blue-300 hover:bg-white/90 hover:shadow-[0_20px_40px_rgba(24,100,255,0.08)]"
               >
                 <div>
                   {/* Top Bar with Number and Icon */}
                   <div className="flex items-center justify-between mb-4">
-                    <span className="text-xs font-mono font-medium text-slate-400">
+                    <span className="text-xs font-normal text-slate-400">
                       STEP {step.num}
                     </span>
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 group-hover:scale-105 transition-transform">
-                      <Icon className="size-4.5" />
+                    <div className="flex size-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition-transform group-hover:scale-110">
+                      <Icon className="size-5" />
                     </div>
                   </div>
 
+                  <div className="inline-block rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-normal uppercase tracking-wider text-slate-600">
+                    {step.badge}
+                  </div>
+
                   {/* Title & Tagline */}
-                  <h3 className="text-lg sm:text-xl font-normal text-slate-900 tracking-tight">
+                  <h3 className="mt-3 text-lg font-normal text-slate-900">
                     {step.title}
                   </h3>
-                  <p className="mt-0.5 text-xs font-normal text-blue-600">
+                  <p className="mt-1 text-xs font-normal text-blue-600">
                     {step.tagline}
                   </p>
 
                   {/* Description */}
-                  <p className="mt-2.5 text-xs sm:text-sm text-slate-600 leading-relaxed font-normal">
+                  <p className="mt-2 text-xs leading-relaxed font-normal text-slate-600">
                     {step.desc}
                   </p>
                 </div>
 
                 {/* Key Points */}
-                <div className="mt-5 pt-4 border-t border-slate-100 space-y-1.5">
+                <div className="mt-6 pt-4 border-t border-slate-100 space-y-2">
                   {step.keyPoints.map((point) => (
                     <div key={point} className="flex items-start gap-2 text-xs text-slate-700">
                       <div className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                         <Check className="size-2 stroke-[3]" />
                       </div>
-                      <span className="font-normal">{point}</span>
+                      <span className="font-normal text-slate-600">{point}</span>
                     </div>
                   ))}
                 </div>
@@ -527,31 +473,31 @@ export function HowItWorksView() {
       {/* ========================================================= */}
       {/* 4. STEP-BY-STEP EXPORT GUIDES (CHATGPT, CLAUDE, GEMINI)   */}
       {/* ========================================================= */}
-      <section className="px-0 py-12 w-[94%] max-w-6xl mx-auto">
-        <div className="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-slate-50/60 via-white to-slate-50/40 p-5 sm:p-8 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
-          <div className="text-center max-w-xl mx-auto mb-6">
+      <section className="px-0 py-16 w-[94%] max-w-6xl mx-auto">
+        <div className="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-slate-50/60 via-white to-slate-50/40 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
+          <div className="text-center max-w-xl mx-auto mb-8">
             <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
               Quick Export Instructions
             </span>
-            <h2 className="text-xl sm:text-2xl font-normal text-slate-900 mt-1.5 tracking-tight">
+            <h2 className="mt-3 text-3xl sm:text-4xl lg:text-[40px] font-normal tracking-tight text-slate-900 leading-tight">
               How to export your AI history.
             </h2>
-            <p className="mt-1.5 text-xs sm:text-sm text-slate-600 font-normal">
+            <p className="mx-auto mt-4 max-w-2xl text-base font-normal leading-relaxed text-slate-600">
               Exporting takes less than 30 seconds. Choose your primary AI assistant below:
             </p>
           </div>
 
           {/* Platform Switcher */}
-          <div className="flex justify-center gap-2 mb-6">
+          <div className="flex justify-center gap-2 mb-8">
             {exportGuides.map((guide) => {
               const isActive = activeGuideTab === guide.id;
               return (
                 <button
                   key={guide.id}
                   onClick={() => setActiveGuideTab(guide.id)}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs transition-all ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all ${
                     isActive
-                      ? "bg-blue-600 text-white shadow-sm shadow-blue-500/20 font-medium"
+                      ? "bg-slate-900 text-white shadow-sm font-normal"
                       : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 font-normal"
                   }`}
                 >
@@ -563,16 +509,16 @@ export function HowItWorksView() {
           </div>
 
           {/* Guide Steps */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {activeGuide.steps.map((s, idx) => (
               <div
                 key={s}
-                className="flex items-start gap-2.5 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-2xs"
+                className="flex items-start gap-3 rounded-2xl border border-white/90 bg-white/80 p-4 shadow-sm backdrop-blur-xl font-normal"
               >
-                <div className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700 font-mono text-xs font-medium">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 font-mono text-xs font-normal">
                   {idx + 1}
                 </div>
-                <p className="text-xs sm:text-sm text-slate-700 font-normal leading-snug">
+                <p className="text-xs font-normal leading-relaxed text-slate-600">
                   {s}
                 </p>
               </div>
@@ -584,23 +530,28 @@ export function HowItWorksView() {
       {/* ========================================================= */}
       {/* 5. MINIMAL & FRIENDLY CALL TO ACTION                      */}
       {/* ========================================================= */}
-      <section className="px-0 py-14 text-center w-[94%] max-w-6xl mx-auto mb-14">
-        <div className="rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50/60 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-normal text-slate-900 tracking-tight leading-[1.2]">
+      <section
+        className="relative overflow-hidden px-6 py-28 text-center font-normal"
+        style={{
+          background: "radial-gradient(circle at 50% 50%, #ffffff 0%, #f8fbff 100%)",
+        }}
+      >
+        <div className="mx-auto flex max-w-3xl flex-col items-center font-normal">
+          <h2 className="mt-6 text-4xl sm:text-5xl lg:text-[54px] font-normal tracking-tight leading-tight text-slate-900">
             Start exploring your AI knowledge.
           </h2>
-          <p className="mt-2.5 text-xs sm:text-sm text-slate-600 max-w-lg mx-auto font-normal">
+          <p className="mt-5 max-w-2xl text-base sm:text-lg font-normal leading-relaxed text-slate-600">
             Drop your conversation ZIP archive and see your personal intelligence hub come alive with zero cloud setup.
           </p>
-          <div className="mt-6 flex justify-center gap-3">
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-4 font-normal">
             <Button
               asChild
               size="lg"
-              className="h-11 rounded-full bg-slate-900 px-7 text-xs sm:text-sm font-normal text-white hover:bg-blue-600 shadow-sm transition-all hover:scale-105 active:scale-95"
+              className="h-13 rounded-full bg-slate-900 px-8 text-base font-normal text-white shadow-sm transition-all hover:bg-blue-600 hover:scale-105 active:scale-95"
             >
-              <Link href="/memory" className="flex items-center gap-2">
-                <Upload className="size-3.5" />
-                <span>Import Chat History</span>
+              <Link href="/memory" className="flex items-center gap-2.5">
+                <Upload className="size-4" />
+                <span>Import AI history</span>
               </Link>
             </Button>
           </div>

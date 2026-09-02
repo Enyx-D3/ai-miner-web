@@ -5,47 +5,15 @@ import Link from "next/link";
 import {
   ArrowRight,
   Atom,
-  Binary,
-  BookOpen,
   BrainCircuit,
   Check,
-  CheckCircle2,
-  ChevronDown,
   ChevronRight,
-  Clock,
-  Code2,
   Copy,
-  Cpu,
-  Database,
-  ExternalLink,
-  FileCheck2,
-  FileCode2,
-  FileJson,
-  FileSpreadsheet,
-  FileText,
-  Filter,
   FolderKanban,
-  FolderTree,
-  HelpCircle,
-  KeyRound,
-  Layers,
-  Lightbulb,
-  ListChecks,
-  Lock,
-  LockKeyhole,
-  MessageSquare,
-  Network,
-  Radio,
   Search,
-  Shield,
   ShieldCheck,
   Sparkles,
-  Target,
-  Terminal,
   Upload,
-  UploadCloud,
-  Workflow,
-  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -355,9 +323,9 @@ export function DocsView() {
       {/* ========================================================= */}
       {/* 1. HERO SECTION (CLEAN & COMPACT)                         */}
       {/* ========================================================= */}
-      <section className="px-6 pt-28 pb-8 sm:pt-36 sm:pb-10 text-center max-w-3xl mx-auto">
+      <section className="px-6 pt-28 pb-12 sm:pt-36 sm:pb-16 text-center max-w-4xl mx-auto">
         {/* Headline */}
-        <h1 className="text-3xl sm:text-4xl lg:text-[42px] font-normal tracking-tight text-slate-900 leading-[1.18]">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-[72px] font-normal tracking-tight text-slate-900 leading-[1.12]">
           Documentation &{" "}
           <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent font-normal">
             knowledge guides.
@@ -365,24 +333,24 @@ export function DocsView() {
         </h1>
 
         {/* Subtitle */}
-        <p className="mt-3.5 max-w-2xl mx-auto text-sm sm:text-base font-normal leading-relaxed text-slate-600">
+        <p className="mt-5 max-w-3xl mx-auto text-lg sm:text-xl font-normal leading-relaxed text-slate-600">
           Everything you need to master Brain2: from 1-click chat ingestion and living project hubs to client-side PBKDF2 encryption.
         </p>
 
         {/* Interactive Search Filter Bar */}
-        <div className="mt-6 max-w-lg mx-auto relative">
-          <Search className="size-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <div className="mt-8 max-w-xl mx-auto relative">
+          <Search className="size-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchFilter}
             onChange={(e) => setSearchFilter(e.target.value)}
             placeholder="Search guides, atoms, encryption, or B2JOB..."
-            className="w-full pl-9.5 pr-4 py-2 text-xs bg-white border border-slate-200/90 rounded-full text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs font-normal"
+            className="w-full pl-11 pr-4 py-3 text-sm bg-white border border-slate-200/90 rounded-full text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm font-normal"
           />
           {searchFilter && (
             <button
               onClick={() => setSearchFilter("")}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600"
             >
               Clear
             </button>
@@ -393,12 +361,12 @@ export function DocsView() {
       {/* ========================================================= */}
       {/* 2. INTERACTIVE DOCUMENTATION WORKSPACE                    */}
       {/* ========================================================= */}
-      <section className="px-6 py-6 max-w-6xl mx-auto mb-16">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <section className="px-6 py-8 max-w-6xl mx-auto mb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* LEFT SIDEBAR: CATEGORIES & ARTICLE LIST */}
           <div className="lg:col-span-4 space-y-4">
             {/* Category Pills */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-2 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl flex flex-col gap-1">
+            <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-2.5 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl flex flex-col gap-1">
               {docCategories.map((cat) => {
                 const Icon = cat.icon;
                 const isActive = activeCategory === cat.id && searchFilter === "";
@@ -411,13 +379,13 @@ export function DocsView() {
                       const firstArticleInCat = docArticles.find((a) => a.category === cat.id);
                       if (firstArticleInCat) setActiveArticleId(firstArticleInCat.id);
                     }}
-                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all text-left ${
+                    className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs transition-all text-left ${
                       isActive
-                        ? "bg-blue-600 text-white font-medium shadow-sm shadow-blue-500/20"
+                        ? "bg-blue-600 text-white font-normal shadow-sm shadow-blue-500/20"
                         : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-normal"
                     }`}
                   >
-                    <Icon className="size-3.5" />
+                    <Icon className="size-4" />
                     <span>{cat.label}</span>
                   </button>
                 );
@@ -425,7 +393,7 @@ export function DocsView() {
             </div>
 
             {/* Articles List in Selected Category */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-3 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl space-y-1.5">
+            <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-4 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl space-y-2">
               <div className="px-2 py-1 text-[10px] font-normal uppercase tracking-wider text-slate-400">
                 {searchFilter ? `Search Results (${visibleArticles.length})` : "Topic Articles"}
               </div>
@@ -437,13 +405,13 @@ export function DocsView() {
                     <button
                       key={article.id}
                       onClick={() => setActiveArticleId(article.id)}
-                      className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all ${
+                      className={`w-full flex items-center justify-between p-3 rounded-xl text-left transition-all ${
                         isSelected
                           ? "bg-blue-50/80 border border-blue-200/90 text-blue-900 shadow-2xs"
                           : "hover:bg-slate-50 text-slate-700 border border-transparent"
                       }`}
                     >
-                      <div className="text-xs font-medium leading-snug line-clamp-2 pr-2">
+                      <div className="text-xs font-normal leading-snug line-clamp-2 pr-2">
                         {article.title}
                       </div>
                       {isSelected && (
@@ -462,30 +430,30 @@ export function DocsView() {
 
           {/* RIGHT MAIN PANEL: ARTICLE CONTENT READER */}
           <div className="lg:col-span-8">
-            <div className="rounded-3xl border border-slate-200/80 bg-white/80 p-6 sm:p-9 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl space-y-6">
+            <div className="rounded-3xl border border-slate-200/80 bg-white/80 p-7 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl space-y-7">
               {/* Article Header */}
-              <div className="pb-5 border-b border-slate-100">
+              <div className="pb-6 border-b border-slate-100">
                 {activeArticle.badge && (
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-[10px] font-normal uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60">
                       {activeArticle.badge}
                     </span>
                   </div>
                 )}
-                <h2 className="text-xl sm:text-2xl font-normal text-slate-900 tracking-tight leading-snug">
+                <h2 className="text-2xl sm:text-3xl font-normal text-slate-900 tracking-tight leading-snug">
                   {activeArticle.title}
                 </h2>
-                <p className="mt-2 text-xs sm:text-sm text-slate-600 leading-relaxed font-normal">
+                <p className="mt-3 text-sm sm:text-base text-slate-600 leading-relaxed font-normal">
                   {activeArticle.summary}
                 </p>
               </div>
 
               {/* Overview Paragraph */}
               <div className="space-y-2">
-                <h3 className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                <h3 className="text-xs font-normal uppercase tracking-wider text-slate-500">
                   Overview
                 </h3>
-                <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-normal">
+                <p className="text-sm text-slate-700 leading-relaxed font-normal">
                   {activeArticle.content.overview}
                 </p>
               </div>
@@ -493,16 +461,16 @@ export function DocsView() {
               {/* Step-by-Step Walkthrough (if applicable) */}
               {activeArticle.content.steps && (
                 <div className="space-y-3">
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                  <h3 className="text-xs font-normal uppercase tracking-wider text-slate-500">
                     Step-by-Step Instructions
                   </h3>
                   <div className="space-y-2.5">
                     {activeArticle.content.steps.map((step, idx) => (
                       <div
                         key={step}
-                        className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/50 p-3.5"
+                        className="flex items-start gap-3.5 rounded-2xl border border-slate-200/70 bg-slate-50/50 p-4"
                       >
-                        <div className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700 font-mono text-xs font-medium">
+                        <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700 font-mono text-xs font-normal">
                           {idx + 1}
                         </div>
                         <p className="text-xs sm:text-sm text-slate-700 font-normal leading-relaxed">
@@ -516,15 +484,15 @@ export function DocsView() {
 
               {/* Key Takeaways / Capabilities (if applicable) */}
               {activeArticle.content.keyTakeaways && (
-                <div className="space-y-2.5">
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                <div className="space-y-3">
+                  <h3 className="text-xs font-normal uppercase tracking-wider text-slate-500">
                     Key Architectural Points
                   </h3>
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {activeArticle.content.keyTakeaways.map((point) => (
                       <div
                         key={point}
-                        className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-700"
+                        className="flex items-start gap-3 text-xs sm:text-sm text-slate-700"
                       >
                         <div className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                           <Check className="size-2.5 stroke-[3]" />
@@ -538,29 +506,29 @@ export function DocsView() {
 
               {/* Interactive Code Snippet Box (if applicable) */}
               {activeArticle.content.codeBlock && (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-mono text-slate-500">
                       {activeArticle.content.codeBlock.filename}
                     </span>
                     <button
                       onClick={() => handleCopyCode(activeArticle.content.codeBlock!.code)}
-                      className="text-[10px] text-blue-600 hover:text-blue-800 font-normal flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs"
+                      className="text-xs text-blue-600 hover:text-blue-800 font-normal flex items-center gap-1.5 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-2xs"
                     >
                       {copiedSnippet ? (
                         <>
-                          <Check className="size-2.5 text-emerald-600" />
+                          <Check className="size-3 text-emerald-600" />
                           <span>Copied</span>
                         </>
                       ) : (
                         <>
-                          <Copy className="size-2.5" />
+                          <Copy className="size-3" />
                           <span>Copy Snippet</span>
                         </>
                       )}
                     </button>
                   </div>
-                  <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 font-mono text-xs text-slate-200 overflow-x-auto shadow-inner">
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 font-mono text-xs text-slate-200 overflow-x-auto shadow-inner">
                     <pre className="leading-relaxed">
                       <code>{activeArticle.content.codeBlock.code}</code>
                     </pre>
@@ -571,7 +539,7 @@ export function DocsView() {
               {/* Callout Notice */}
               {activeArticle.content.callout && (
                 <div
-                  className={`rounded-2xl border p-4 flex items-start gap-3 ${
+                  className={`rounded-2xl border p-4.5 flex items-start gap-3.5 ${
                     activeArticle.content.callout.type === "security"
                       ? "bg-emerald-50/60 border-emerald-200 text-emerald-900"
                       : activeArticle.content.callout.type === "tip"
@@ -579,15 +547,15 @@ export function DocsView() {
                       : "bg-amber-50/60 border-amber-200 text-amber-900"
                   }`}
                 >
-                  <ShieldCheck className="size-4 shrink-0 mt-0.5 text-blue-600" />
-                  <p className="text-xs leading-relaxed font-normal">
+                  <ShieldCheck className="size-5 shrink-0 mt-0.5 text-blue-600" />
+                  <p className="text-xs sm:text-sm leading-relaxed font-normal">
                     {activeArticle.content.callout.text}
                   </p>
                 </div>
               )}
 
               {/* Bottom Quick Navigation */}
-              <div className="pt-5 border-t border-slate-100 flex items-center justify-between">
+              <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-xs text-slate-400 font-normal">
                   Brain2 Knowledge Base · v0.9.13
                 </span>
@@ -607,26 +575,31 @@ export function DocsView() {
       {/* ========================================================= */}
       {/* 3. CLEAN CALL TO ACTION                                   */}
       {/* ========================================================= */}
-      <section className="px-6 py-14 text-center max-w-4xl mx-auto mb-14">
-        <div className="rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50/60 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-0.5 text-xs font-normal text-blue-700 mb-3">
-            <Sparkles className="size-3" />
+      <section
+        className="relative overflow-hidden px-6 py-28 text-center font-normal"
+        style={{
+          background: "radial-gradient(circle at 50% 50%, #ffffff 0%, #f8fbff 100%)",
+        }}
+      >
+        <div className="mx-auto flex max-w-3xl flex-col items-center font-normal">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3.5 py-1 text-xs font-normal text-blue-700 mb-4">
+            <Sparkles className="size-3.5" />
             <span>Ready in 30 Seconds</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-normal text-slate-900 tracking-tight leading-[1.2]">
+          <h2 className="text-4xl sm:text-5xl lg:text-[54px] font-normal tracking-tight leading-tight text-slate-900">
             Ready to structure your AI conversations?
           </h2>
-          <p className="mt-2.5 text-xs sm:text-sm text-slate-600 max-w-lg mx-auto font-normal">
+          <p className="mt-5 max-w-2xl text-base sm:text-lg font-normal leading-relaxed text-slate-600">
             Drop your conversation ZIP archive and see your personal intelligence hub come alive with zero cloud setup.
           </p>
-          <div className="mt-6 flex justify-center gap-3">
+          <div className="mt-9 flex justify-center gap-4 font-normal">
             <Button
               asChild
               size="lg"
-              className="h-11 rounded-full bg-slate-900 px-7 text-xs sm:text-sm font-normal text-white hover:bg-blue-600 shadow-sm transition-all hover:scale-105 active:scale-95"
+              className="h-13 rounded-full bg-slate-900 px-8 text-base font-normal text-white shadow-sm transition-all hover:bg-blue-600 hover:scale-105 active:scale-95"
             >
-              <Link href="/memory" className="flex items-center gap-2">
-                <Upload className="size-3.5" />
+              <Link href="/memory" className="flex items-center gap-2.5">
+                <Upload className="size-4" />
                 <span>Import Chat History</span>
               </Link>
             </Button>

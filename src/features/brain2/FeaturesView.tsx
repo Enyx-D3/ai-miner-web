@@ -191,9 +191,9 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 1. HERO SECTION                                           */}
       {/* ========================================================= */}
-      <section className="px-6 pt-28 pb-12 sm:pt-36 sm:pb-14 text-center max-w-3xl mx-auto">
+      <section className="px-6 pt-28 pb-16 sm:pt-36 sm:pb-20 text-center max-w-4xl mx-auto">
         {/* Headline */}
-        <h1 className="text-3xl sm:text-4xl lg:text-[42px] font-normal tracking-tight text-slate-900 leading-[1.18]">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-[72px] font-normal tracking-tight text-slate-900 leading-[1.12]">
           Powerful intelligence features, built for{" "}
           <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent font-normal">
             local-first privacy.
@@ -201,25 +201,25 @@ export function FeaturesView() {
         </h1>
 
         {/* Subtitle */}
-        <p className="mt-4 max-w-2xl mx-auto text-sm sm:text-base font-normal leading-relaxed text-slate-600">
+        <p className="mt-5 max-w-3xl mx-auto text-lg sm:text-xl font-normal leading-relaxed text-slate-600">
           Everything you need to turn thousands of conversations into searchable, structured, and permanent working memory without cloud lock-in.
         </p>
 
         {/* Value Badges */}
         <div className="mt-8 flex flex-wrap items-center justify-center gap-2.5 sm:gap-4 text-xs text-slate-600 font-normal">
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3 py-1 shadow-2xs">
+          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-2xs">
             <CheckCircle2 className="size-3.5 text-emerald-600" />
             <span>Sub-Millisecond Search</span>
           </div>
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3 py-1 shadow-2xs">
+          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-2xs">
             <ShieldCheck className="size-3.5 text-blue-600" />
             <span>Client-Side WebCrypto</span>
           </div>
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3 py-1 shadow-2xs">
+          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-2xs">
             <BookOpen className="size-3.5 text-purple-600" />
             <span>Automated LifeWiki</span>
           </div>
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3 py-1 shadow-2xs">
+          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-2xs">
             <LockKeyhole className="size-3.5 text-amber-500" />
             <span>Encrypted .B2M Vaults</span>
           </div>
@@ -229,20 +229,20 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 2. INTERACTIVE FEATURE PLAYGROUND                         */}
       {/* ========================================================= */}
-      <section className="px-0 py-10 w-[94%] max-w-6xl mx-auto">
-        <div className="rounded-3xl border border-slate-200/80 bg-white/70 p-5 sm:p-8 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
+      <section className="px-0 py-12 w-[94%] max-w-6xl mx-auto">
+        <div className="rounded-3xl border border-slate-200/80 bg-white/70 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
           {/* Header */}
-          <div className="text-center max-w-xl mx-auto mb-7">
-            <span className="text-[10px] font-normal uppercase tracking-wider text-blue-600">
+          <div className="text-center max-w-xl mx-auto mb-8">
+            <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
               Interactive Explorer
             </span>
-            <h2 className="text-lg sm:text-xl lg:text-2xl font-normal text-slate-900 mt-1 tracking-tight">
+            <h2 className="mt-3 text-3xl sm:text-4xl lg:text-[40px] font-normal tracking-tight text-slate-900 leading-tight">
               Test core capabilities in real time.
             </h2>
           </div>
 
           {/* Feature Tabs */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
             {interactiveFeatures.map((feat) => {
               const Icon = feat.icon;
               const isActive = activeTab === feat.id;
@@ -250,26 +250,26 @@ export function FeaturesView() {
                 <button
                   key={feat.id}
                   onClick={() => setActiveTab(feat.id)}
-                  className={`flex flex-col items-start p-3.5 rounded-2xl border text-left transition-all duration-200 ${
+                  className={`flex flex-col items-start p-4 rounded-2xl border text-left transition-all duration-200 ${
                     isActive
                       ? "bg-white border-blue-500 shadow-sm ring-1 ring-blue-500/20"
                       : "bg-white/60 border-slate-200/80 hover:bg-white hover:border-slate-300"
                   }`}
                 >
-                  <div className="flex items-center justify-between w-full mb-2">
+                  <div className="flex items-center justify-between w-full mb-3">
                     <div
-                      className={`size-7 rounded-lg flex items-center justify-center ${
+                      className={`size-8 rounded-xl flex items-center justify-center ${
                         isActive ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"
                       }`}
                     >
-                      <Icon className="size-3.5" />
+                      <Icon className="size-4" />
                     </div>
-                    <span className="text-[10px] font-mono text-slate-400 font-normal">
+                    <span className="text-[10px] font-normal uppercase tracking-wider text-slate-500">
                       {feat.badge}
                     </span>
                   </div>
                   <span
-                    className={`text-xs font-medium truncate w-full ${
+                    className={`text-sm font-normal truncate w-full ${
                       isActive ? "text-slate-900" : "text-slate-700"
                     }`}
                   >
@@ -281,18 +281,18 @@ export function FeaturesView() {
           </div>
 
           {/* Live Preview Display Box */}
-          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-5 sm:p-6">
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-6 sm:p-8">
             {/* Feature Description Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-200/60">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 mb-5 border-b border-slate-200/60">
               <div>
-                <h3 className="text-base font-medium text-slate-900">
+                <h3 className="text-lg font-normal text-slate-900">
                   {activeFeature.name}
                 </h3>
-                <p className="text-xs text-slate-600 mt-0.5 font-normal">
+                <p className="text-xs font-normal text-slate-600 mt-1 leading-relaxed">
                   {activeFeature.description}
                 </p>
               </div>
-              <span className={`text-[10px] font-normal px-2.5 py-1 rounded-full border self-start sm:self-auto ${activeFeature.color}`}>
+              <span className={`text-[10px] font-normal uppercase tracking-wider px-3 py-1 rounded-full border self-start sm:self-auto ${activeFeature.color}`}>
                 {activeFeature.badge}
               </span>
             </div>
@@ -301,25 +301,25 @@ export function FeaturesView() {
             {activeTab === "search" && (
               <div className="space-y-3">
                 {/* Result Items */}
-                <div className="space-y-2 mt-2">
+                <div className="space-y-2.5 mt-2">
                   {filteredResults.length > 0 ? (
                     filteredResults.map((res) => (
                       <div
                         key={res.title}
-                        className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-2xs hover:border-blue-200 transition-colors"
+                        className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-2xs hover:border-blue-200 transition-colors"
                       >
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <span className="text-xs font-medium text-slate-900 truncate">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="text-sm font-normal text-slate-900 truncate">
                             {res.title}
                           </span>
-                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-normal ${res.tagColor}`}>
+                          <span className={`text-[10px] font-normal uppercase tracking-wider px-2.5 py-0.5 rounded-full ${res.tagColor}`}>
                             {res.tag}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-600 font-normal leading-relaxed">
+                        <p className="text-xs text-slate-600 font-normal leading-relaxed">
                           {res.snippet}
                         </p>
-                        <div className="mt-1.5 flex items-center gap-3 text-[10px] text-slate-400 font-normal">
+                        <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-400 font-normal">
                           <span>Project: {res.project}</span>
                           <span>Source: {res.provider}</span>
                           <span>{res.date}</span>
@@ -337,36 +337,36 @@ export function FeaturesView() {
 
             {/* PREVIEW 2: LIVING PROJECTS */}
             {activeTab === "projects" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs space-y-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-2xs space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-900">Project: ai-miner-web</span>
-                    <span className="text-[9px] font-mono bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
+                    <span className="text-sm font-normal text-slate-900">Project: ai-miner-web</span>
+                    <span className="text-[10px] font-normal uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full">
                       Active NOW
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-600 font-normal leading-relaxed">
+                  <p className="text-xs text-slate-600 font-normal leading-relaxed">
                     Local-first memory mining interface with PBKDF2 Web Crypto vault and full-text IndexedDB index.
                   </p>
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-normal">
                     <span>14 Conversations · 1,480 Atoms</span>
-                    <span className="text-blue-600 font-normal">Updated 12m ago</span>
+                    <span className="text-blue-600">Updated 12m ago</span>
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs space-y-2.5">
+                <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-2xs space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-900">Project: parser-tuning-v2</span>
-                    <span className="text-[9px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                    <span className="text-sm font-normal text-slate-900">Project: parser-tuning-v2</span>
+                    <span className="text-[10px] font-normal uppercase tracking-wider bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full">
                       Research Hub
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-600 font-normal leading-relaxed">
+                  <p className="text-xs text-slate-600 font-normal leading-relaxed">
                     QLoRA 4-bit quantization benchmarks for domain extraction model running on 8GB consumer hardware.
                   </p>
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-normal">
                     <span>8 Conversations · 820 Atoms</span>
-                    <span className="text-blue-600 font-normal">Updated 2d ago</span>
+                    <span className="text-blue-600">Updated 2d ago</span>
                   </div>
                 </div>
               </div>
@@ -374,25 +374,25 @@ export function FeaturesView() {
 
             {/* PREVIEW 3: LIFEWIKI SYNTHESIS */}
             {activeTab === "wiki" && (
-              <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <FileText className="size-4 text-purple-600" />
-                    <span className="text-xs font-medium text-slate-900">
+                    <span className="text-sm font-normal text-slate-900">
                       LifeWiki / Project: ai-miner-web.md
                     </span>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-mono">Auto-Compiled</span>
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-normal">Auto-Compiled</span>
                 </div>
-                <div className="space-y-2 text-[11px] text-slate-600 font-normal leading-relaxed">
+                <div className="space-y-2.5 text-xs text-slate-600 font-normal leading-relaxed">
                   <p>
-                    <strong className="text-slate-800 font-medium">Overview:</strong> Client-side AI history reconstruction engine. Operates with zero cloud servers.
+                    <strong className="text-slate-800 font-normal">Overview:</strong> Client-side AI history reconstruction engine. Operates with zero cloud servers.
                   </p>
                   <p>
-                    <strong className="text-slate-800 font-medium">Core ADRs:</strong> ADR-002 enforces PBKDF2-SHA256 key derivation. ADR-005 handles streaming fflate ZIP extraction.
+                    <strong className="text-slate-800 font-normal">Core ADRs:</strong> ADR-002 enforces PBKDF2-SHA256 key derivation. ADR-005 handles streaming fflate ZIP extraction.
                   </p>
                   <p>
-                    <strong className="text-slate-800 font-medium">Verified Constraints:</strong> No telemetry trackers. Passphrases are stored strictly in volatile RAM.
+                    <strong className="text-slate-800 font-normal">Verified Constraints:</strong> No telemetry trackers. Passphrases are stored strictly in volatile RAM.
                   </p>
                 </div>
               </div>
@@ -400,25 +400,25 @@ export function FeaturesView() {
 
             {/* PREVIEW 4: ENCRYPTED VAULT & B2JOB */}
             {activeTab === "vault" && (
-              <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs space-y-3">
+              <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-2xs space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Lock className="size-4 text-emerald-600" />
-                    <span className="text-xs font-medium text-slate-900">
+                    <span className="text-sm font-normal text-slate-900">
                       .B2M Encrypted Snapshot Package
                     </span>
                   </div>
-                  <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                  <span className="text-[10px] font-normal uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded">
                     AES-256-GCM Locked
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-600 font-normal leading-relaxed">
+                <p className="text-xs text-slate-600 font-normal leading-relaxed">
                   Passphrase derives a 256-bit encryption key using 200,000 PBKDF2 rounds. Your complete conversation graph, atoms, and wikis are saved into a single portable backup file.
                 </p>
                 <div className="pt-2 flex flex-wrap gap-2">
                   <button
                     onClick={handleCopy}
-                    className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[10px] font-normal hover:bg-blue-600 transition-colors flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-full bg-slate-900 text-white text-xs font-normal hover:bg-blue-600 transition-colors flex items-center gap-2"
                   >
                     {copiedContext ? (
                       <>
@@ -442,48 +442,49 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 3. CORE FEATURE CARDS (CLEAN & MINIMAL GRID)              */}
       {/* ========================================================= */}
-      <section className="px-0 py-12 w-[94%] max-w-6xl mx-auto">
-        <div className="text-center max-w-2xl mx-auto mb-10">
+      <section className="px-0 py-16 w-[94%] max-w-6xl mx-auto">
+        <div className="text-center max-w-2xl mx-auto mb-12">
           <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
             Feature Breakdown
           </span>
-          <h2 className="mt-2 text-2xl sm:text-3xl lg:text-[34px] font-normal tracking-tight text-slate-900 leading-[1.2]">
+          <h2 className="mt-3 text-3xl sm:text-4xl lg:text-[40px] font-normal tracking-tight text-slate-900 leading-tight">
             Engineered for clarity and speed.
           </h2>
-          <p className="mt-2 text-sm sm:text-base font-normal text-slate-600">
+          <p className="mx-auto mt-4 max-w-2xl text-base font-normal leading-relaxed text-slate-600">
             A comprehensive suite of local-first tools designed to give you permanent mastery over your AI conversations.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {featureGrid.map((feat) => {
             const Icon = feat.icon;
             return (
               <div
                 key={feat.title}
-                className="group relative flex flex-col justify-between rounded-3xl border border-slate-200/80 bg-white/70 p-6 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl hover:border-blue-300 transition-all duration-300"
+                className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-white/80 bg-white/60 p-7 text-left shadow-[0_10px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-blue-300 hover:bg-white/90 hover:shadow-[0_20px_40px_rgba(24,100,255,0.08)]"
               >
                 <div>
                   {/* Top Icon & Tag */}
                   <div className="flex items-center justify-between mb-4">
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 group-hover:scale-105 transition-transform">
+                    <div className="flex size-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition-transform group-hover:scale-110">
                       <Icon className="size-5" />
                     </div>
-                    <span className="text-[10px] font-normal text-slate-400 bg-slate-100/70 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] font-normal uppercase tracking-wider text-slate-400">
                       {feat.tag}
                     </span>
                   </div>
 
-                  {/* Title & Subtitle */}
-                  <h3 className="text-base font-normal text-slate-900 tracking-tight">
+                  <div className="inline-block rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-normal uppercase tracking-wider text-slate-600">
+                    {feat.subtitle}
+                  </div>
+
+                  {/* Title */}
+                  <h3 className="mt-3 text-lg font-normal text-slate-900">
                     {feat.title}
                   </h3>
-                  <p className="mt-0.5 text-xs font-normal text-blue-600">
-                    {feat.subtitle}
-                  </p>
 
                   {/* Description */}
-                  <p className="mt-2.5 text-xs sm:text-sm text-slate-600 leading-relaxed font-normal">
+                  <p className="mt-2 text-xs leading-relaxed font-normal text-slate-600">
                     {feat.desc}
                   </p>
                 </div>
@@ -496,49 +497,55 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 4. PRIVACY BLUEPRINT STRIP                                */}
       {/* ========================================================= */}
-      <section className="px-0 py-12 w-[94%] max-w-6xl mx-auto">
-        <div className="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-slate-50/60 via-white to-slate-50/40 p-6 sm:p-9 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
-          <div className="text-center max-w-xl mx-auto mb-8">
+      <section className="relative border-y border-slate-200/60 bg-gradient-to-b from-slate-50/60 via-white to-slate-50/40 px-6 py-24 lg:px-8 font-normal">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center">
             <span className="text-xs font-normal uppercase tracking-[0.2em] text-blue-600">
-              Zero-Cloud Privacy Guarantee
+              Privacy & Technical Truth
             </span>
-            <h2 className="text-xl sm:text-2xl font-normal text-slate-900 mt-1.5 tracking-tight">
+            <h2 className="mt-3 text-3xl sm:text-4xl font-normal tracking-tight text-slate-900">
               Why local-first architecture matters.
             </h2>
-            <p className="mt-1.5 text-xs sm:text-sm text-slate-600 font-normal">
+            <p className="mx-auto mt-4 max-w-2xl text-sm font-normal leading-relaxed text-slate-600">
               Your conversations are private intellectual property. We keep them that way.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600 mb-2.5">
-                <Cpu className="size-4" />
+          <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div className="flex gap-4 rounded-2xl border border-white/90 bg-white/80 p-6 shadow-sm backdrop-blur-xl transition-all hover:border-blue-200 hover:shadow-md font-normal">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Cpu className="size-5" />
               </div>
-              <h4 className="text-xs font-medium text-slate-900">On-Device Processing</h4>
-              <p className="mt-1 text-[11px] text-slate-600 font-normal leading-relaxed">
-                Decompression, parsing, and search execute entirely within your browser runtime.
-              </p>
+              <div>
+                <h3 className="text-base font-normal text-slate-900">On-Device Processing</h3>
+                <p className="mt-1.5 text-xs font-normal leading-relaxed text-slate-600">
+                  Decompression, parsing, and search execute entirely within your browser runtime.
+                </p>
+              </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 mb-2.5">
-                <ShieldCheck className="size-4" />
+            <div className="flex gap-4 rounded-2xl border border-white/90 bg-white/80 p-6 shadow-sm backdrop-blur-xl transition-all hover:border-blue-200 hover:shadow-md font-normal">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <ShieldCheck className="size-5" />
               </div>
-              <h4 className="text-xs font-medium text-slate-900">Zero Model Training</h4>
-              <p className="mt-1 text-[11px] text-slate-600 font-normal leading-relaxed">
-                Your private prompts and proprietary code snippets are never fed to remote training sets.
-              </p>
+              <div>
+                <h3 className="text-base font-normal text-slate-900">Zero Model Training</h3>
+                <p className="mt-1.5 text-xs font-normal leading-relaxed text-slate-600">
+                  Your private prompts and proprietary code snippets are never fed to remote training sets.
+                </p>
+              </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-purple-50 text-purple-600 mb-2.5">
-                <Database className="size-4" />
+            <div className="flex gap-4 rounded-2xl border border-white/90 bg-white/80 p-6 shadow-sm backdrop-blur-xl transition-all hover:border-blue-200 hover:shadow-md font-normal">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Database className="size-5" />
               </div>
-              <h4 className="text-xs font-medium text-slate-900">No Vendor Lock-In</h4>
-              <p className="mt-1 text-[11px] text-slate-600 font-normal leading-relaxed">
-                Export clean markdown, JSON, or encrypted .B2M packages anytime with one click.
-              </p>
+              <div>
+                <h3 className="text-base font-normal text-slate-900">No Vendor Lock-In</h3>
+                <p className="mt-1.5 text-xs font-normal leading-relaxed text-slate-600">
+                  Export clean markdown, JSON, or encrypted .B2M packages anytime with one click.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -547,23 +554,28 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 5. CALL TO ACTION                                         */}
       {/* ========================================================= */}
-      <section className="px-0 py-14 text-center w-[94%] max-w-6xl mx-auto mb-14">
-        <div className="rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50/60 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-normal text-slate-900 tracking-tight leading-[1.2]">
+      <section
+        className="relative overflow-hidden px-6 py-28 text-center font-normal"
+        style={{
+          background: "radial-gradient(circle at 50% 50%, #ffffff 0%, #f8fbff 100%)",
+        }}
+      >
+        <div className="mx-auto flex max-w-3xl flex-col items-center font-normal">
+          <h2 className="mt-6 text-4xl sm:text-5xl lg:text-[54px] font-normal tracking-tight leading-tight text-slate-900">
             Start exploring all features today.
           </h2>
-          <p className="mt-2.5 text-xs sm:text-sm text-slate-600 max-w-lg mx-auto font-normal">
+          <p className="mt-5 max-w-2xl text-base sm:text-lg font-normal leading-relaxed text-slate-600">
             Drop your conversation ZIP archive and see your personal intelligence hub come alive with zero cloud setup.
           </p>
-          <div className="mt-6 flex justify-center gap-3">
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-4 font-normal">
             <Button
               asChild
               size="lg"
-              className="h-11 rounded-full bg-slate-900 px-7 text-xs sm:text-sm font-normal text-white hover:bg-blue-600 shadow-sm transition-all hover:scale-105 active:scale-95"
+              className="h-13 rounded-full bg-slate-900 px-8 text-base font-normal text-white shadow-sm transition-all hover:bg-blue-600 hover:scale-105 active:scale-95"
             >
-              <Link href="/memory" className="flex items-center gap-2">
-                <Upload className="size-3.5" />
-                <span>Import Chat History</span>
+              <Link href="/memory" className="flex items-center gap-2.5">
+                <Upload className="size-4" />
+                <span>Import AI history</span>
               </Link>
             </Button>
           </div>

@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Check,
-  CheckCircle2,
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -121,14 +120,14 @@ export function PricingView() {
         {/* ========================================================= */}
         {/* 1. HEADER                                                 */}
         {/* ========================================================= */}
-        <div className="text-center max-w-3xl mx-auto pt-8 pb-10 sm:pt-12 sm:pb-12">
-          <h1 className="text-3xl sm:text-4xl lg:text-[42px] font-normal tracking-tight text-slate-900 leading-[1.18]">
+        <div className="text-center max-w-3xl mx-auto pt-8 pb-14 sm:pt-12 sm:pb-16">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-[72px] font-normal tracking-tight text-slate-900 leading-[1.12]">
             Plans &{" "}
             <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent font-normal">
               pricing.
             </span>
           </h1>
-          <p className="mt-3 text-sm sm:text-base text-slate-600 font-normal">
+          <p className="mt-5 text-base sm:text-lg text-slate-600 font-normal leading-relaxed">
             Local-first intelligence for individual developers and engineering teams.
           </p>
         </div>
@@ -136,29 +135,29 @@ export function PricingView() {
         {/* ========================================================= */}
         {/* 2. LINEAR-STYLE 4-COLUMN PRICING GRID (LIGHT MODE)        */}
         {/* ========================================================= */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
           {pricingTiers.map((tier) => {
             const price = isYearly ? tier.yearlyPrice : tier.monthlyPrice;
 
             return (
               <div
                 key={tier.id}
-                className={`relative flex flex-col justify-between rounded-2xl p-5 lg:p-5.5 transition-all duration-200 ${
+                className={`relative flex flex-col justify-between rounded-2xl p-6 transition-all duration-200 ${
                   tier.highlight
                     ? "border-2 border-blue-600 bg-white shadow-[0_12px_40px_rgba(37,99,235,0.1)] z-10"
-                    : "border border-slate-200/90 bg-white/80 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl hover:border-slate-300"
+                    : "border border-white/80 bg-white/70 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl hover:border-blue-200 hover:bg-white/90"
                 }`}
               >
                 <div>
                   {/* Tier Title */}
-                  <h2 className="text-xl sm:text-2xl font-semibold text-slate-900 tracking-tight">
+                  <h2 className="text-lg font-normal text-slate-900 tracking-tight">
                     {tier.name}
                   </h2>
 
                   {/* Price */}
                   <div className="mt-3">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 font-mono">
+                      <span className="text-3xl sm:text-4xl font-normal tracking-tight text-slate-900 font-mono">
                         {price}
                       </span>
                       {tier.id !== "free" && tier.id !== "enterprise" && (
@@ -202,7 +201,7 @@ export function PricingView() {
 
                   {/* Inherited Line (e.g. All Free features +) */}
                   {tier.inheritedText && (
-                    <div className="flex items-center gap-2 mb-3 text-xs font-semibold text-slate-900">
+                    <div className="flex items-center gap-2 mb-3 text-xs font-normal text-slate-900">
                       <Check className="size-3.5 text-blue-600 stroke-[2.5]" />
                       <span>{tier.inheritedText}</span>
                     </div>
@@ -216,7 +215,7 @@ export function PricingView() {
                         className="flex items-start gap-2.5 text-xs text-slate-600"
                       >
                         <div className="mt-0.5 shrink-0 flex items-center justify-center">
-                          <Check className="size-3.5 text-slate-500 stroke-[2.5]" />
+                          <Check className="size-3.5 text-slate-400 stroke-[2.5]" />
                         </div>
                         <span className="font-normal leading-relaxed text-slate-600">
                           {feat}
@@ -233,7 +232,7 @@ export function PricingView() {
                       <Button
                         asChild
                         size="sm"
-                        className="flex-1 h-10 rounded-full bg-blue-600 text-white font-medium text-xs hover:bg-blue-700 transition-all active:scale-95 shadow-md shadow-blue-500/20"
+                        className="flex-1 h-10 rounded-full bg-blue-600 text-white font-normal text-xs hover:bg-blue-700 transition-all active:scale-95 shadow-md shadow-blue-500/20"
                       >
                         <Link href={tier.ctaLink}>{tier.ctaText}</Link>
                       </Button>
@@ -266,26 +265,29 @@ export function PricingView() {
         {/* ========================================================= */}
         {/* 3. CALL TO ACTION                                         */}
         {/* ========================================================= */}
-        <section className="mt-16 text-center max-w-4xl mx-auto mb-10">
-          <div className="rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50/60 p-6 sm:p-10 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl">
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-normal text-slate-900 tracking-tight leading-[1.2]">
-              Start exploring all features today.
-            </h2>
-            <p className="mt-2.5 text-xs sm:text-sm text-slate-600 max-w-lg mx-auto font-normal">
-              Drop your conversation ZIP archive and see your personal intelligence hub come alive with zero cloud setup.
-            </p>
-            <div className="mt-6 flex justify-center gap-3">
-              <Button
-                asChild
-                size="lg"
-                className="h-11 rounded-full bg-slate-900 px-7 text-xs sm:text-sm font-normal text-white hover:bg-blue-600 shadow-sm transition-all hover:scale-105 active:scale-95"
-              >
-                <Link href="/memory" className="flex items-center gap-2">
-                  <Upload className="size-3.5" />
-                  <span>Import Chat History</span>
-                </Link>
-              </Button>
-            </div>
+        <section
+          className="mt-24 text-center max-w-4xl mx-auto mb-10 overflow-hidden rounded-3xl border border-white/80 p-8 sm:p-12 shadow-[0_8px_30px_rgba(15,30,60,0.04)] backdrop-blur-xl"
+          style={{
+            background: "radial-gradient(circle at 50% 50%, #ffffff 0%, #f8fbff 100%)",
+          }}
+        >
+          <h2 className="text-4xl sm:text-5xl lg:text-[54px] font-normal tracking-tight leading-tight text-slate-900">
+            Start exploring all features today.
+          </h2>
+          <p className="mt-5 max-w-2xl mx-auto text-base sm:text-lg font-normal leading-relaxed text-slate-600">
+            Drop your conversation ZIP archive and see your personal intelligence hub come alive with zero cloud setup.
+          </p>
+          <div className="mt-9 flex justify-center gap-4">
+            <Button
+              asChild
+              size="lg"
+              className="h-13 rounded-full bg-slate-900 px-8 text-base font-normal text-white shadow-sm transition-all hover:bg-blue-600 hover:scale-105 active:scale-95"
+            >
+              <Link href="/memory" className="flex items-center gap-2.5">
+                <Upload className="size-4" />
+                <span>Import AI history</span>
+              </Link>
+            </Button>
           </div>
         </section>
       </div>
