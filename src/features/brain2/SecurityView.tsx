@@ -127,7 +127,7 @@ export function SecurityView() {
       {/* ========================================================= */}
       {/* 1. HERO SECTION                                           */}
       {/* ========================================================= */}
-      <section className="w-[94%] max-w-6xl mx-auto pt-24 pb-8 sm:pt-32 sm:pb-10 text-left">
+      <section className="w-[94%] max-w-6xl mx-auto pt-24 pb-12 sm:pt-32 sm:pb-16 text-left">
         {/* Main Display Headline */}
         <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-[72px] font-normal tracking-tight text-slate-900 leading-[1.12] max-w-4xl">
           Security built for{" "}
@@ -137,34 +137,34 @@ export function SecurityView() {
         </h1>
 
         {/* 3 Quick Visual Trust Badges */}
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="flex items-center gap-3 rounded-2xl border border-white/90 bg-white/80 p-4 shadow-sm backdrop-blur-xl">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+        <div className="mt-12 sm:mt-16 grid grid-cols-1 sm:grid-cols-3 gap-5 sm:gap-6">
+          <div className="flex items-center gap-4 rounded-2xl border border-white/90 bg-white/80 p-5 sm:p-6 shadow-sm backdrop-blur-xl transition-all hover:border-blue-200">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
               <HardDrive className="size-5" />
             </div>
-            <div>
-              <div className="text-xs font-normal text-slate-900">0% Cloud Ingestion</div>
-              <div className="text-[11px] font-normal text-slate-500">100% In-Browser Sandbox</div>
+            <div className="space-y-0.5">
+              <div className="text-xs sm:text-sm font-normal text-slate-900">0% Cloud Ingestion</div>
+              <div className="text-[11px] sm:text-xs font-normal text-slate-500">100% In-Browser Sandbox</div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl border border-white/90 bg-white/80 p-4 shadow-sm backdrop-blur-xl">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+          <div className="flex items-center gap-4 rounded-2xl border border-white/90 bg-white/80 p-5 sm:p-6 shadow-sm backdrop-blur-xl transition-all hover:border-blue-200">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
               <KeyRound className="size-5" />
             </div>
-            <div>
-              <div className="text-xs font-normal text-slate-900">200,000 PBKDF2 Rounds</div>
-              <div className="text-[11px] font-normal text-slate-500">AES-256-GCM Web Crypto</div>
+            <div className="space-y-0.5">
+              <div className="text-xs sm:text-sm font-normal text-slate-900">200,000 PBKDF2 Rounds</div>
+              <div className="text-[11px] sm:text-xs font-normal text-slate-500">AES-256-GCM Web Crypto</div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl border border-white/90 bg-white/80 p-4 shadow-sm backdrop-blur-xl">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
+          <div className="flex items-center gap-4 rounded-2xl border border-white/90 bg-white/80 p-5 sm:p-6 shadow-sm backdrop-blur-xl transition-all hover:border-blue-200">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
               <WifiOff className="size-5" />
             </div>
-            <div>
-              <div className="text-xs font-normal text-slate-900">Zero Network Telemetry</div>
-              <div className="text-[11px] font-normal text-slate-500">Offline PWA Operational</div>
+            <div className="space-y-0.5">
+              <div className="text-xs sm:text-sm font-normal text-slate-900">Zero Network Telemetry</div>
+              <div className="text-[11px] sm:text-xs font-normal text-slate-500">Offline PWA Operational</div>
             </div>
           </div>
         </div>

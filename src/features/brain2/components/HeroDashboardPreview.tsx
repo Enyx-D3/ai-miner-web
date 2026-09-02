@@ -81,22 +81,22 @@ interface NavItem {
 
 const memoryItems: NavItem[] = [
   { id: "home", title: "Home", icon: LayoutGrid },
-  { id: "b2job", title: "Ask / B2JOB", icon: BrainCircuit, badge: "AI", badgeColor: "bg-blue-100 text-blue-700" },
+  { id: "b2job", title: "Ask / B2JOB", icon: BrainCircuit },
   { id: "search", title: "Search & Recall", icon: Search },
   { id: "projects", title: "Projects", icon: FolderKanban },
   { id: "notebooks", title: "Live Notebooks", icon: NotebookTabs },
   { id: "wiki", title: "LifeWiki", icon: BookOpen },
-  { id: "conversations", title: "Conversations", icon: MessagesSquare, badge: "12", badgeColor: "bg-slate-100 text-slate-700" },
+  { id: "conversations", title: "Conversations", icon: MessagesSquare },
   { id: "timeline", title: "Timeline", icon: CalendarDays },
 ];
 
 const intelligenceItems: NavItem[] = [
-  { id: "ticks", title: "Things That Need You", icon: ListChecks, badge: "3", badgeColor: "bg-amber-100 text-amber-800" },
-  { id: "decisions", title: "Decisions", icon: Target, badge: "4", badgeColor: "bg-purple-100 text-purple-800" },
-  { id: "discover", title: "Discover", icon: Lightbulb, badge: "New", badgeColor: "bg-emerald-100 text-emerald-800" },
+  { id: "ticks", title: "Things That Need You", icon: ListChecks },
+  { id: "decisions", title: "Decisions", icon: Target },
+  { id: "discover", title: "Discover", icon: Lightbulb },
   { id: "patterns", title: "Patterns", icon: BrainCircuit },
   { id: "experiments", title: "Experiments", icon: FlaskConical },
-  { id: "missions", title: "Brain2Missions", icon: History, badge: "2 Live", badgeColor: "bg-blue-100 text-blue-800" },
+  { id: "missions", title: "Brain2Missions", icon: History },
   { id: "outputs", title: "Outputs & Reports", icon: ShieldCheck },
 ];
 
