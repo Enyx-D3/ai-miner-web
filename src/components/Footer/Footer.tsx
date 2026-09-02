@@ -35,8 +35,8 @@ export default function Footer() {
             <Link href="/pricing" className="hover:text-blue-600 transition-colors">
               Pricing
             </Link>
-            <Link href="/docs" className="hover:text-blue-600 transition-colors">
-              Docs
+            <Link href="/security" className="hover:text-blue-600 transition-colors">
+              Security
             </Link>
             <Link href="/memory" className="hover:text-blue-600 transition-colors">
               Import History

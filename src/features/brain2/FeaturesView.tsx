@@ -7,7 +7,6 @@ import {
   BookOpen,
   BrainCircuit,
   Check,
-  CheckCircle2,
   Cpu,
   Database,
   FileText,
@@ -191,39 +190,14 @@ export function FeaturesView() {
       {/* ========================================================= */}
       {/* 1. HERO SECTION                                           */}
       {/* ========================================================= */}
-      <section className="px-6 pt-28 pb-16 sm:pt-36 sm:pb-20 text-center max-w-4xl mx-auto">
+      <section className="w-[94%] max-w-6xl mx-auto pt-24 pb-8 sm:pt-32 sm:pb-10 text-left">
         {/* Headline */}
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-[72px] font-normal tracking-tight text-slate-900 leading-[1.12]">
-          Powerful intelligence features, built for{" "}
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-[72px] font-normal tracking-tight text-slate-900 leading-[1.12] max-w-4xl">
+          Features built for{" "}
           <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent font-normal">
-            local-first privacy.
+            local privacy.
           </span>
         </h1>
-
-        {/* Subtitle */}
-        <p className="mt-5 max-w-3xl mx-auto text-lg sm:text-xl font-normal leading-relaxed text-slate-600">
-          Everything you need to turn thousands of conversations into searchable, structured, and permanent working memory without cloud lock-in.
-        </p>
-
-        {/* Value Badges */}
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-2.5 sm:gap-4 text-xs text-slate-600 font-normal">
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-2xs">
-            <CheckCircle2 className="size-3.5 text-emerald-600" />
-            <span>Sub-Millisecond Search</span>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-2xs">
-            <ShieldCheck className="size-3.5 text-blue-600" />
-            <span>Client-Side WebCrypto</span>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-2xs">
-            <BookOpen className="size-3.5 text-purple-600" />
-            <span>Automated LifeWiki</span>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-2xs">
-            <LockKeyhole className="size-3.5 text-amber-500" />
-            <span>Encrypted .B2M Vaults</span>
-          </div>
-        </div>
       </section>
 
       {/* ========================================================= */}

@@ -1,5 +1,5 @@
-import { DocsView } from "@/features/brain2/DocsView";
+import { redirect } from "next/navigation";
 
 export default function DocsPage() {
-  return <DocsView />;
+  redirect("/security");
 }
