@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
   Check,
@@ -166,7 +167,7 @@ const exportGuides = [
   {
     id: "chatgpt",
     name: "ChatGPT",
-    icon: "🤖",
+    icon: "/images/chatgpt.png",
     steps: [
       "Click your Profile picture in bottom-left → Settings",
       "Go to 'Data Controls' and click 'Export data'",
@@ -177,7 +178,7 @@ const exportGuides = [
   {
     id: "claude",
     name: "Claude",
-    icon: "🧠",
+    icon: "/images/claude.png",
     steps: [
       "Click your Account icon in the bottom-left corner",
       "Select 'Account Settings' → navigate to 'Data Controls'",
@@ -188,7 +189,7 @@ const exportGuides = [
   {
     id: "gemini",
     name: "Google Gemini",
-    icon: "✨",
+    icon: "/images/gemini.png",
     steps: [
       "Visit Google Takeout (takeout.google.com)",
       "Deselect all and check only 'Gemini / Bard'",
@@ -488,20 +489,34 @@ export function HowItWorksView() {
           </div>
 
           {/* Platform Switcher */}
-          <div className="flex justify-center gap-2 mb-8">
+          <div className="flex flex-wrap justify-center gap-2 mb-8">
             {exportGuides.map((guide) => {
               const isActive = activeGuideTab === guide.id;
               return (
                 <button
                   key={guide.id}
                   onClick={() => setActiveGuideTab(guide.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all ${
+                  className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs transition-all ${
                     isActive
                       ? "bg-slate-900 text-white shadow-sm font-normal"
                       : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 font-normal"
                   }`}
                 >
-                  <span>{guide.icon}</span>
+                  <div
+                    className={`flex size-5 shrink-0 items-center justify-center rounded-md p-0.5 transition-colors ${
+                      isActive
+                        ? "bg-white shadow-xs"
+                        : "bg-slate-100/90 border border-slate-200/60"
+                    }`}
+                  >
+                    <Image
+                      src={guide.icon}
+                      alt={guide.name}
+                      width={16}
+                      height={16}
+                      className="size-3.5 object-contain"
+                    />
+                  </div>
                   <span>{guide.name}</span>
                 </button>
               );

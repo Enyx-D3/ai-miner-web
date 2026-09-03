@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "savedAt": "2026-09-02T17:16:28.111Z",
+  "agents": [
+    {
+      "id": "god",
+      "name": "Michael",
+      "character": "michael",
+      "accent": "lemon",
+      "description": "god — runs the floor, triages requests, escalates only critical calls to you",
+      "project": "hive",
+      "tmuxTarget": "",
+      "cwd": "E:\\ai-miner-web",
+      "status": "idle",
+      "action": "running the floor",
+      "progress": 0,
+      "currentStation": "desk",
+      "ptyId": "pty-god",
+      "command": "gemini --model pro --approval-mode=yolo",
+      "provider": "gemini",
+      "model": "pro",
+      "isGod": true
+    }
+  ],
+  "archived": [],
+  "restorable": [],
+  "queues": {
+    "god": [
+      {
+        "id": "q-1788369329505-4",
+        "text": "hi",
+        "ts": 1788369329505
+      },
+      {
+        "id": "q-1788369387595-5",
+        "text": "create me icoin on this web",
+        "ts": 1788369387595
+      }
+    ]
+  },
+  "selectedId": "god"
+}
