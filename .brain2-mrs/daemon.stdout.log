@@ -1,0 +1,2 @@
+Brain2 MRS daemon listening on http://127.0.0.1:4317
+Model: onnx-community/Qwen2.5-0.5B-Instruct (q8)

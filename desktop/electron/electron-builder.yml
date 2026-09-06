@@ -1,0 +1,33 @@
+appId: com.enyx.aiminer
+productName: AI Miner
+directories:
+  output: dist-desktop
+  buildResources: desktop/resources
+files:
+  - desktop/electron/**/*
+  - .next/standalone/**/*
+  - .next/static/**/*
+  - public/**/*
+  - scripts/brain2-mrs-daemon.mjs
+  - package.json
+asarUnpack:
+  - .next/standalone/**/*
+  - scripts/brain2-mrs-daemon.mjs
+  - node_modules/@huggingface/**/*
+  - node_modules/onnxruntime-web/**/*
+  - node_modules/sharp/**/*
+extraMetadata:
+  main: desktop/electron/main.cjs
+win:
+  target:
+    - nsis
+mac:
+  target:
+    - dmg
+linux:
+  target:
+    - AppImage
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity, ArrowLeft, BookOpen, BrainCircuit, CalendarDays, Database, FlaskConical, FolderKanban, History,
+  Activity, ArrowLeft, BookOpen, BrainCircuit, CalendarDays, Cpu, Database, FlaskConical, FolderKanban, History,
   LayoutDashboard, Lightbulb, ListChecks, MessagesSquare, Network, NotebookTabs, Radio, Search, ShieldCheck, Target,
 } from "lucide-react";
 import {
@@ -34,6 +34,7 @@ const intelligenceItems = [
 
 const systemItems = [
   { title: "Memory / .B2M", url: "/memory", icon: Database },
+  { title: "Models", url: "/models", icon: Cpu },
   { title: "Devices & Sync", url: "/devices", icon: Network },
   { title: "Operations", url: "/operations", icon: Activity },
 ];

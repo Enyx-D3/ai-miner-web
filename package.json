@@ -1,7 +1,10 @@
 {
   "name": "brain2-ai-miner-web-app",
   "version": "0.9.13",
+  "description": "AI Miner desktop and web app with local Brain2 deterministic plus MRS runtime.",
+  "author": "Enyx",
   "private": true,
+  "main": "desktop/electron/main.cjs",
   "scripts": {
     "dev": "next dev --webpack",
     "dev:turbopack": "next dev",
@@ -28,10 +31,20 @@
     "test:v9-reader": "node scripts/test-v9-reader.mjs",
     "test:v9-reset": "node scripts/test-v9-reset.mjs",
     "test:v9-atomization": "node scripts/test-v9-atomization-stack.mjs",
+    "test:v9-deterministic-quality": "node scripts/test-v9-deterministic-quality.mjs",
     "test:transformers": "node scripts/test-v9-transformers.mjs",
     "test:mrs-memory": "node scripts/test-v9-mrs-memory.mjs",
     "test:mrs-controller": "node scripts/test-v9-mrs-controller.mjs",
-    "test:mrs-acceptance-trace": "node scripts/test-v9-mrs-acceptance-trace.mjs"
+    "test:mrs-acceptance-trace": "node scripts/test-v9-mrs-acceptance-trace.mjs",
+    "profile:v9-project-intelligence": "node scripts/profile-v9-project-intelligence.mjs",
+    "mrs:daemon": "node scripts/brain2-mrs-daemon.mjs",
+    "test:mrs-daemon-contract": "node scripts/test-brain2-mrs-daemon-contract.mjs",
+    "mrs:daemon:check": "node scripts/check-brain2-mrs-daemon.mjs",
+    "mrs:daemon:start": "node scripts/start-brain2-mrs-daemon-detached.mjs",
+    "desktop:dev": "node scripts/start-ai-miner-desktop-dev.mjs",
+    "desktop:prepare": "node scripts/prepare-desktop-package.mjs",
+    "desktop:build": "next build && npm run desktop:prepare",
+    "desktop:dist": "npm run desktop:build && electron-builder --config desktop/electron/electron-builder.yml"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -65,6 +78,8 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "playwright": "^1.62.1",

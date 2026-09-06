@@ -13,7 +13,7 @@ type ControllerRunLike = {
   projectId?: string;
   createdAt: string;
   usedMRS: boolean;
-  terminatedBy: "BRANCH_ZERO" | "TINY_SPECIALIST" | "QWEN" | "REPAIR";
+  terminatedBy: "BRANCH_ZERO" | "TINY_SPECIALIST" | "MRS_MODEL" | "REPAIR";
   confidence: number;
   result: { answer: string; evidenceIds: string[] };
   verification: { status: "PASS" | "FAIL" | "PENDING"; detail: string };
@@ -88,7 +88,7 @@ function stageDetail(run: ControllerRunLike, name: string) {
 export async function buildReasoningTrajectory(run: ControllerRunLike, memory: ReasoningMemory): Promise<ReasoningTrajectoryRecord> {
   const acceptanceTrace = run.acceptanceTrace ?? [];
   const operationSequence = run.stages
-    .filter((item) => item.name === "COGNITIVE_R1" || item.name === "TRACE" || item.name === "RPVM" || item.name === "TINY_SPECIALIST" || item.name === "QWEN" || item.name === "REPAIR")
+    .filter((item) => item.name === "COGNITIVE_R1" || item.name === "TRACE" || item.name === "RPVM" || item.name === "TINY_SPECIALIST" || item.name === "MRS_MODEL" || item.name === "REPAIR")
     .map((item) => `${item.name}:${item.status}`);
   const boundaryConditions = [...new Set([
     ...memory.boundaryConditions,
@@ -190,7 +190,7 @@ export async function compileCapabilityFromControllerRun(snapshot: Brain2Snapsho
         `Terminate via ${run.terminatedBy} when the verifier passes.`,
       ];
   const stageOrigin: CompiledCapabilityRecord["stageOrigin"] = run.usedMRS
-    ? (run.terminatedBy === "QWEN" ? "WEBLLM_QWEN" : "REPAIR")
+    ? (run.terminatedBy === "MRS_MODEL" ? "WEB_MRS_MODEL" : "REPAIR")
     : (run.terminatedBy === "BRANCH_ZERO" ? "BRANCH_ZERO" : "TINY_SPECIALIST");
   const payload = {
     registryKey,
@@ -206,7 +206,7 @@ export async function compileCapabilityFromControllerRun(snapshot: Brain2Snapsho
     ])].slice(0, 10),
     inputShape: ["task:string", "databox:evidence-bounded", run.projectId ? "projectScope:required" : "projectScope:optional"],
     outputShape: ["answer:string", "evidenceIds:string[]", "verification:PASS|FAIL|PENDING"],
-    dependencies: [...new Set(["B2JOB", "B2VERIFY", ...(run.usedMRS ? ["WEBLLM_QWEN"] : []), ...((run.acceptanceTrace ?? []).filter((item) => item !== "DATABOX"))])].slice(0, 12),
+    dependencies: [...new Set(["B2JOB", "B2VERIFY", ...(run.usedMRS ? ["WEB_MRS_MODEL"] : []), ...((run.acceptanceTrace ?? []).filter((item) => item !== "DATABOX"))])].slice(0, 12),
     procedure,
     boundaryConditions,
     repairHints: run.terminatedBy === "REPAIR" ? [stageDetail(run, "REPAIR") || "Residual-only repair may be required."] : [],

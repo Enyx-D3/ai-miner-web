@@ -1,6 +1,6 @@
-import fs from "node:fs";import path from "node:path";import {execFileSync} from "node:child_process";import {createRequire} from "node:module";
-const root=process.cwd(), out=path.join(root,".v9-atom-test-dist");fs.rmSync(out,{recursive:true,force:true});fs.mkdirSync(out,{recursive:true});
-execFileSync("tsc",["--target","ES2022","--module","commonjs","--moduleResolution","node","--skipLibCheck","--esModuleInterop","--outDir",out,"src/lib/brain2/contracts.ts","src/lib/brain2/identity.ts","src/lib/brain2/atomizationStack.ts","src/lib/brain2/atomizer.ts"],{stdio:"inherit"});
+import fs from "node:fs";import path from "node:path";import {execFileSync} from "node:child_process";import {createRequire} from "node:module";import process from "node:process";
+const root=process.cwd(), out=path.join(root,".v9-atom-test-dist"),tscCli=path.join(root,"node_modules","typescript","bin","tsc");fs.rmSync(out,{recursive:true,force:true});fs.mkdirSync(out,{recursive:true});
+execFileSync(process.execPath,[tscCli,"--target","ES2022","--module","commonjs","--moduleResolution","node","--skipLibCheck","--esModuleInterop","--outDir",out,"src/lib/brain2/contracts.ts","src/lib/brain2/identity.ts","src/lib/brain2/atomizationStack.ts","src/lib/brain2/atomizer.ts"],{stdio:"inherit"});
 const require=createRequire(import.meta.url);const {atomizeMessage}=require(path.join(out,"atomizer.js"));const {buildB250LocalChunk,assessAtomContextSufficiency,B250_TOKEN_CAP}=require(path.join(out,"atomizationStack.js"));
 function ok(v,m){if(!v)throw new Error(m)}
 const atoms=atomizeMessage("Going forward, Brain2 model is Qwen3-0.6B; the release must preserve history. If the model changes, keep the old value as historical evidence.","user");

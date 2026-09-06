@@ -107,6 +107,8 @@ export type TruthRecord = {
   id: string;
   key: string;
   projectId: string;
+  conversationId?: string;
+  sourceId?: string;
   atomId: string;
   text: string;
   kind: AtomKind;
@@ -122,6 +124,7 @@ export type TruthRecord = {
   value?: string;
   polarity?: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
   scope?: string;
+  strictTruthRootKey?: string;
   reconciliationVersion?: string;
   schemaVersion?: number;
 };
@@ -214,7 +217,7 @@ export type CompiledCapabilityRecord = {
   sourcePatternId?: string;
   sourceTrajectoryId?: string;
   version: number;
-  stageOrigin: "BRANCH_ZERO" | "CAPABILITY_LOOKUP" | "PATTERN_MEMORY" | "COGNITIVE_R1" | "TRACE_RPVM" | "TINY_SPECIALIST" | "WEBLLM_QWEN" | "REPAIR";
+  stageOrigin: "BRANCH_ZERO" | "CAPABILITY_LOOKUP" | "PATTERN_MEMORY" | "COGNITIVE_R1" | "TRACE_RPVM" | "TINY_SPECIALIST" | "WEB_MRS_MODEL" | "REPAIR";
   preconditions: string[];
   inputShape: string[];
   outputShape: string[];
@@ -254,7 +257,7 @@ export type ReasoningTrajectoryRecord = {
   verificationStatus: "PASS" | "FAIL" | "PENDING";
   outcome: "SUCCESS" | "FAILURE" | "REPAIR";
   usedMRS: boolean;
-  terminatedBy: "BRANCH_ZERO" | "TINY_SPECIALIST" | "QWEN" | "REPAIR";
+  terminatedBy: "BRANCH_ZERO" | "TINY_SPECIALIST" | "MRS_MODEL" | "REPAIR";
   residualCount: number;
   repairApplied: boolean;
   failureSignature?: string;

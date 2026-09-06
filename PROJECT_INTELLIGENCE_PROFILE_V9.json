@@ -1,0 +1,45 @@
+{
+  "schema": "B2_V9_PROJECT_INTELLIGENCE_PROFILE_V1",
+  "generatedAt": "2026-08-30T22:33:22.173Z",
+  "scenarios": [
+    {
+      "scenario": "small_project",
+      "projectId": "p_small",
+      "atoms": 120,
+      "truths": 40,
+      "patterns": 8,
+      "sourceVersionMs": 2,
+      "deterministicBuildMs": 31,
+      "currentTruth": 25,
+      "importantIdeas": 20,
+      "connections": 8,
+      "unresolved": 20
+    },
+    {
+      "scenario": "medium_project",
+      "projectId": "p_medium",
+      "atoms": 320,
+      "truths": 120,
+      "patterns": 18,
+      "sourceVersionMs": 0,
+      "deterministicBuildMs": 80,
+      "currentTruth": 25,
+      "importantIdeas": 20,
+      "connections": 15,
+      "unresolved": 20
+    },
+    {
+      "scenario": "hot_path_cap",
+      "projectId": "p_hot",
+      "atoms": 400,
+      "truths": 180,
+      "patterns": 28,
+      "sourceVersionMs": 1,
+      "deterministicBuildMs": 127,
+      "currentTruth": 25,
+      "importantIdeas": 20,
+      "connections": 15,
+      "unresolved": 20
+    }
+  ]
+}

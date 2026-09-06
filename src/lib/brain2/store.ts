@@ -7,12 +7,15 @@ import {
   type NormalizedConversationInput,
 } from "./contracts";
 import { accumulatePattern, buildPatternsFromAggregates, type PatternAggregate } from "./patternEngine";
+import { buildCurrentTruthRoot, buildSourceEvidenceRoot, createStrictCurrentTruthContext, deriveStrictCurrentTruthCandidates, evaluateStrictCurrentTruthCandidate, noteStrictAssistantMessage, toCanonicalTruthMessages } from "./canonicalTruth";
 import { createPatternTest, createPortableExpertise } from "./patternLab";
 import { chooseProject, deriveProjectName, fingerprintConversation, projectSlug } from "./projectResolver";
 import { buildDeterministicProjectIntelligence, buildProjectIntelligenceSourceVersion, refineProjectIntelligenceWithMRS, type IntelligenceProjection } from "./intelligenceLayer";
 import { buildFailureMemory, buildReasoningTrajectory, compileCapabilityFromControllerRun, retrieveReasoningMemory } from "./reasoningCompiler";
 import { configurePersistentRetrieval, indexedAtomsAsync, indexedMessages, indexedMessagesAsync, indexedTruths, indexedTruthsAsync, invalidateRuntimeIndex, messageHasAtom } from "./retrievalIndex";
 import { getBrain2RuntimeAvailabilityHint, getBrain2TransformersSnapshot, isBrain2MRSReady } from "./transformersRuntime";
+import { runBrain2ForegroundTask } from "./foregroundTaskGate";
+import { brain2MRSError, brain2MRSLog } from "./mrsDebug";
 import { reconcileAtomToTruth } from "./truthEngine";
 import { canonicalId, canonicalMessageId, indexTerms, keywords, normalizeText, sha256, wordCount } from "./identity";
 import { BRAIN2_SYNC_PROTOCOL_VERSION, canonicalJson, hashEntity, hashMutation, hashPayload, packBootstrapRecords, verifyMutationEnvelope } from "./syncProtocol";
@@ -54,6 +57,7 @@ import type {
   TruthRecord,
   VerificationRecord,
 } from "./types";
+import type { ProjectIntelligenceWorkerEvent, ProjectIntelligenceWorkerRequest } from "@/workers/brain2ProjectIntelligence.worker";
 
 const DB_NAME = "brain2-ai-miner";
 const DB_VERSION = 11;
@@ -68,6 +72,69 @@ const TABLES = [
 type TableName = typeof TABLES[number];
 type DataTableName = Exclude<TableName, "meta">;
 type AnyRecord = { id: string; [key: string]: unknown };
+export type Brain2TruthIntegritySummary = {
+  generatedAt: string;
+  durationMs: number;
+  currentTruthCount: number;
+  messageCount: number;
+  currentTruthRoot: string;
+  providerNeutralCurrentTruthRoot: string;
+  sourceEvidenceRoot: string;
+};
+export type Brain2DVIDiagnosticsSummary = {
+  generatedAt: string;
+  durationMs: number;
+  atomCount: number;
+  strictAtoms: number;
+  eligible: number;
+  residual: number;
+  humanStrictAtoms: number;
+  humanEligible: number;
+  humanResidual: number;
+  assistantOrUnknownStrictAtoms: number;
+  mrsPressureResidual: number;
+  byRuleFamily: Record<string, { eligible: number; residual: number; total: number }>;
+  byHumanRuleFamily: Record<string, { eligible: number; residual: number; total: number }>;
+  residualReasons: Record<string, number>;
+  humanResidualSamples: Array<{ ruleFamily: string; reason: string; text: string; messageRole?: string }>;
+  humanResidualSamplesByRuleFamily: Record<string, Array<{ reason: string; text: string; messageRole?: string }>>;
+};
+export type Brain2ProjectDiagnosticsSummary = {
+  generatedAt: string;
+  durationMs: number;
+  projects: Array<{
+    projectId: string;
+    projectName: string;
+    deterministic: {
+      messages: number;
+      atoms: number;
+      currentTruths: number;
+      eligible: number;
+      residual: number;
+      humanEligible: number;
+      humanResidual: number;
+      assistantBlocked: number;
+      byHumanRuleFamily: Record<string, { eligible: number; residual: number; total: number }>;
+      residualSamples: Array<{ ruleFamily: string; reason: string; text: string; atomId: string; messageId: string }>;
+    };
+    mrs: {
+      artifactState?: string;
+      runtime?: string;
+      status: "RUNNING" | "QUEUED" | "WAITING" | "DONE" | "ERROR";
+      unresolved: number;
+      unresolvedShown: number;
+      reviewed: number;
+      deterministicVerified: number;
+      verified: number;
+      rejected: number;
+      lastAttemptAt?: string;
+      lastError?: string;
+      processing: boolean;
+      queued: boolean;
+      samplePendingAtoms: Array<{ id: string; statement: string; kind: string; evidenceIds: string[] }>;
+    };
+  }>;
+};
 
 const emptyStorage: Brain2StorageState = {
   totalMessages:0,totalAtoms:0,totalTruths:0,totalConversations:0,totalEvidenceBlocks:0,indexedDocuments:0,hotMessages:0,hotAtoms:0,retrievalIndexStatus:"EMPTY",retrievalIndexProgress:0,bootMode:"BOUNDED_HOT_SET",
@@ -83,6 +150,8 @@ const listeners = new Set<() => void>();
 const projectIntelligenceRefreshes = new Map<string, Promise<DerivedArtifactRecord | null>>();
 const projectIntelligenceMRSRefreshes = new Map<string, Promise<DerivedArtifactRecord | null>>();
 const projectIntelligenceMRSScheduleTimers = new Map<string, number>();
+const PROJECT_INTELLIGENCE_MRS_REFINING_STALE_MS = 90 * 1000;
+let projectIntelligenceMRSQueue: Promise<void> = Promise.resolve();
 let deferredDerivationsTimer:number|undefined;
 let deferredDerivationsPromise:Promise<void>|null=null;
 let deferredDerivationsQueued=false;
@@ -96,6 +165,9 @@ let pendingLongTaskTotalMs = 0;
 let pendingLongTaskMaxMs = 0;
 let pendingLongTaskLastAt: string | undefined;
 let longTaskFlushTimer:number|undefined;
+let projectIntelligenceWorker:Worker|undefined;
+let projectIntelligenceWorkerPromise:Promise<Worker>|null=null;
+let projectIntelligenceWorkerSequence=0;
 
 // Ingestion indexes are deliberately independent of React snapshot scans.
 let knownMessageIds = new Set<string>();
@@ -124,23 +196,81 @@ function randomUuidCompat(){
   }
   return `uuid_${Date.now()}_${Math.random().toString(36).slice(2,12)}`;
 }
+async function getProjectIntelligenceWorker(){
+  if(typeof window==="undefined"||typeof Worker==="undefined")return null;
+  if(projectIntelligenceWorker)return projectIntelligenceWorker;
+  if(projectIntelligenceWorkerPromise)return projectIntelligenceWorkerPromise;
+  projectIntelligenceWorkerPromise=Promise.resolve(new Worker(new URL("../../workers/brain2ProjectIntelligence.worker.ts", import.meta.url),{type:"module"})).then((worker)=>{
+    projectIntelligenceWorker=worker;
+    projectIntelligenceWorkerPromise=null;
+    return worker;
+  }).catch((error)=>{
+    projectIntelligenceWorkerPromise=null;
+    throw error;
+  });
+  return projectIntelligenceWorkerPromise;
+}
+async function buildDeterministicProjectIntelligenceOffMainThread(input:NonNullable<Awaited<ReturnType<typeof buildProjectIntelligenceInput>>>){
+  const worker=await getProjectIntelligenceWorker().catch(()=>null);
+  if(!worker)return buildDeterministicProjectIntelligence(input);
+  const requestId=`pi_${++projectIntelligenceWorkerSequence}_${Date.now()}`;
+  return await new Promise<IntelligenceProjection>((resolve,reject)=>{
+    const handleMessage=(event:MessageEvent<ProjectIntelligenceWorkerEvent>)=>{
+      if(event.data.requestId!==requestId)return;
+      cleanup();
+      if(event.data.type==="done"){resolve(event.data.projection);return;}
+      reject(new Error(event.data.error));
+    };
+    const handleError=(event:ErrorEvent)=>{
+      cleanup();
+      void worker.postMessage({type:"cancel",requestId} satisfies ProjectIntelligenceWorkerRequest);
+      reject(event.error instanceof Error?event.error:new Error(event.message||"Project intelligence worker failed"));
+    };
+    const cleanup=()=>{
+      worker.removeEventListener("message",handleMessage as EventListener);
+      worker.removeEventListener("error",handleError as EventListener);
+    };
+    worker.addEventListener("message",handleMessage as EventListener);
+    worker.addEventListener("error",handleError as EventListener);
+    worker.postMessage({type:"build",requestId,input} satisfies ProjectIntelligenceWorkerRequest);
+  });
+}
 function projectIntelligenceArtifactId(projectId:string){return `derived_project_intelligence_${projectId}`;}
 function projectIntelligenceCacheKey(projectId:string){return `PROJECT_INTELLIGENCE:${projectId}`;}
 function parseProjectIntelligence(record?:DerivedArtifactRecord|null):IntelligenceProjection|null{
   if(!record?.payloadJson)return null;
   try{return JSON.parse(record.payloadJson) as IntelligenceProjection;}catch{return null;}
 }
+function isProjectIntelligenceMRSRefiningStale(record:DerivedArtifactRecord){
+  if(record.state!=="MRS_REFINING")return false;
+  const updatedAt=Date.parse(record.updatedAt);
+  return !Number.isFinite(updatedAt)||Date.now()-updatedAt>PROJECT_INTELLIGENCE_MRS_REFINING_STALE_MS;
+}
+function projectIntelligencePendingCount(projection?:IntelligenceProjection|null){return projection?.unresolvedTotal ?? projection?.unresolved.length ?? 0;}
+function isProjectIntelligenceMRSQueuedOrRunning(projectId:string){
+  if(projectIntelligenceMRSScheduleTimers.has(projectId))return true;
+  for(const key of projectIntelligenceMRSRefreshes.keys())if(key.startsWith(`${projectId}:`))return true;
+  return false;
+}
+function projectIntelligenceMRSStatus(projectId:string,artifact?:DerivedArtifactRecord,unresolved=0):Brain2ProjectDiagnosticsSummary["projects"][number]["mrs"]["status"]{
+  if(artifact?.state==="ERROR")return "ERROR";
+  if(artifact?.state==="MRS_REFINING"&&!isProjectIntelligenceMRSRefiningStale(artifact))return "RUNNING";
+  if(projectIntelligenceMRSScheduleTimers.has(projectId))return "QUEUED";
+  for(const key of projectIntelligenceMRSRefreshes.keys())if(key.startsWith(`${projectId}:`))return "QUEUED";
+  if(unresolved>0)return "WAITING";
+  return "DONE";
+}
 function projectArtifactState(projection:IntelligenceProjection,phase:"deterministic"|"refining"|"refined"|"error"):DerivedArtifactRecord["state"]{
   if(phase==="error")return "ERROR";
-  if(phase==="refined")return "MRS_READY";
+  if(phase==="refined")return projectIntelligencePendingCount(projection)?"MRS_PENDING":"MRS_READY";
   if(phase==="refining")return "MRS_REFINING";
-  return projection.unresolved.length?"MRS_PENDING":"DETERMINISTIC_READY";
+  return projectIntelligencePendingCount(projection)?"MRS_PENDING":"DETERMINISTIC_READY";
 }
 function projectArtifactRuntime(projection:IntelligenceProjection,phase:"deterministic"|"refining"|"refined"|"error"):DerivedArtifactRecord["mrsRuntime"]{
   if(phase==="error")return "ERROR";
   if(phase==="refined")return "CONNECTED";
   if(phase==="refining")return "DEFERRED";
-  return projection.unresolved.length?"DEFERRED":"NOT_REQUIRED";
+  return projectIntelligencePendingCount(projection)?"DEFERRED":"NOT_REQUIRED";
 }
 
 function mergeById<T extends { id: string }>(base: T[], writes: T[]): T[] {
@@ -507,12 +637,26 @@ async function putDerivedArtifacts(records:DerivedArtifactRecord[]){
 }
 
 async function buildProjectIntelligenceInput(projectId:string){
+  const startedAt=performanceNow();
   const project=snapshot.projects.find((item)=>item.id===projectId);
   if(!project)return null;
+  const loadStartedAt=performanceNow();
   const [summary,atoms]=await Promise.all([loadProjectTruthSummary(projectId),loadProjectAtoms(projectId,400)]);
+  const loadDurationMs=performanceNow()-loadStartedAt;
   const truthIds=new Set(atoms.map((atom)=>atom.truthRecordId).filter(Boolean));
   const extraTruth=snapshot.truths.filter((truth)=>truth.projectId===projectId&&(truthIds.has(truth.id)||["SUPERSEDED","CONFLICTING","PENDING_REVIEW"].includes(truth.status)));
   const truths=[...new Map([...summary.current,...extraTruth].map((truth)=>[truth.id,truth])).values()];
+  const totalDurationMs=performanceNow()-startedAt;
+  if(totalDurationMs>=16){
+    await recordResponsivenessTelemetry("project_intelligence.build_input",totalDurationMs,{
+      projectId,
+      atoms:atoms.length,
+      currentTruths:summary.current.length,
+      extraTruths:extraTruth.length,
+      mergedTruths:truths.length,
+      loadDurationMs:Math.round(loadDurationMs),
+    });
+  }
   return {
     project,
     atoms,
@@ -570,25 +714,43 @@ function buildProjectIntelligenceArtifact(input:{projectId:string;sourceVersion:
 async function queueProjectIntelligenceMRS(projectId:string,input:NonNullable<Awaited<ReturnType<typeof buildProjectIntelligenceInput>>>,sourceVersion:string,base:DerivedArtifactRecord){
   const key=`${projectId}:${sourceVersion}`;
   if(projectIntelligenceMRSRefreshes.has(key))return projectIntelligenceMRSRefreshes.get(key) ?? null;
-  const pending=(async()=>{
+  const pending=projectIntelligenceMRSQueue.then(async()=>{
     const baseProjection=parseProjectIntelligence(base);
-    if(!baseProjection?.unresolved.length)return base;
+    if(!baseProjection||!projectIntelligencePendingCount(baseProjection))return base;
+    brain2MRSLog("queue.project-refine.start", {
+      projectId,
+      unresolved: projectIntelligencePendingCount(baseProjection),
+      unresolvedShown: baseProjection.unresolved.length,
+      runtimeReadyOnly: true,
+    });
     const refining=buildProjectIntelligenceArtifact({projectId,sourceVersion,projection:baseProjection,phase:"refining",createdAt:base.createdAt});
     await putDerivedArtifacts([refining]);
     try{
       const refined=await refineProjectIntelligenceWithMRS(input,baseProjection,{runtimeReadyOnly:true});
+      brain2MRSLog("queue.project-refine.done", {
+        projectId,
+        mrsRuntime: refined.mrsRuntime,
+        unresolvedAfter: projectIntelligencePendingCount(refined),
+        unresolvedShownAfter: refined.unresolved.length,
+        importantIdeas: refined.importantIdeas.length,
+        mrsVerified: refined.importantIdeas.filter((item)=>item.verification==="MRS_VERIFIED").length,
+        mrsPending: projectIntelligencePendingCount(refined),
+        mrsReviewedCandidateIds: refined.mrsReviewedCandidateIds?.length ?? 0,
+      });
       const record=buildProjectIntelligenceArtifact({projectId,sourceVersion,projection:refined,phase:refined.mrsRuntime==="CONNECTED"?"refined":"deterministic",createdAt:base.createdAt});
       await putDerivedArtifacts([record]);
       return record;
     }catch(error){
       const message=error instanceof Error?error.message:String(error);
+      brain2MRSError("queue.project-refine.error", { projectId, error: message });
       const fallback=buildProjectIntelligenceArtifact({projectId,sourceVersion,projection:{...baseProjection,mrsRuntime:"ERROR"},phase:"error",createdAt:base.createdAt,lastMRSError:message});
       await putDerivedArtifacts([fallback]);
       return fallback;
     }finally{
       projectIntelligenceMRSRefreshes.delete(key);
     }
-  })();
+  });
+  projectIntelligenceMRSQueue=pending.then(()=>undefined,()=>undefined);
   projectIntelligenceMRSRefreshes.set(key,pending);
   return pending;
 }
@@ -635,6 +797,7 @@ async function persistentSearch<K extends "message"|"atom"|"truth">(kind:K,query
 
 async function evidenceExists(ids:string[]):Promise<Set<string>>{const found=new Set<string>();if(!ids.length)return found;const db=await openDb();await Promise.all((["messages","atoms","truths"] as const).map(table=>new Promise<void>((resolve,reject)=>{const tx=db.transaction(table,"readonly");const store=tx.objectStore(table);let pending=ids.length;for(const id of ids){const r=store.getKey(id);r.onsuccess=()=>{if(r.result!==undefined)found.add(id);if(--pending===0)resolve();};r.onerror=()=>reject(r.error);}})));return found;}
 async function pagedPrimaryRead<T>(table:TableName,startAfter?:IDBValidKey,limit=SEARCH_INDEX_BATCH):Promise<{items:T[];lastKey?:IDBValidKey}>{const db=await openDb();return new Promise((resolve,reject)=>{const items:T[]=[];let lastKey:IDBValidKey|undefined;const tx=db.transaction(table,"readonly");const range=startAfter===undefined?undefined:IDBKeyRange.lowerBound(startAfter,true);const request=tx.objectStore(table).openCursor(range);request.onsuccess=()=>{const cursor=request.result;if(!cursor||items.length>=limit){resolve({items,lastKey});return;}items.push(cursor.value as T);lastKey=cursor.key;cursor.continue();};request.onerror=()=>reject(request.error);});}
+async function readAllPaged<T>(table:TableName,limit=SEARCH_INDEX_BATCH):Promise<T[]>{const out:T[]=[];let key:IDBValidKey|undefined;while(true){const page=await pagedPrimaryRead<T>(table,key,limit);out.push(...page.items);key=page.lastKey;if(page.items.length<limit)break;await new Promise((resolve)=>setTimeout(resolve,0));}return out;}
 let searchIndexRebuildPromise:Promise<void>|null=null;
 let storageLifecycleEpoch=0;
 class StaleStorageLifecycleError extends Error { constructor(){ super("Brain2 storage lifecycle changed"); this.name="StaleStorageLifecycleError"; } }
@@ -642,6 +805,192 @@ function assertStorageLifecycle(epoch:number){ if(epoch!==storageLifecycleEpoch)
 export async function rebuildPersistentSearchIndex():Promise<void>{if(searchIndexRebuildPromise)return searchIndexRebuildPromise;const rebuildEpoch=storageLifecycleEpoch;searchIndexRebuildPromise=(async()=>{try{assertStorageLifecycle(rebuildEpoch);snapshot.storage={...snapshot.storage,retrievalIndexStatus:"BUILDING",retrievalIndexProgress:0,lastError:undefined};setSnapshot({storage:snapshot.storage});await clearTable("searchDocs");assertStorageLifecycle(rebuildEpoch);const total=(await countTable("messages"))+(await countTable("atoms"))+(await countTable("truths"));let done=0;for(const table of ["messages","atoms","truths"] as const){let key:IDBValidKey|undefined;while(true){const page=await pagedPrimaryRead<MessageRecord|AtomRecord|TruthRecord>(table,key);if(!page.items.length)break;const docs:PersistentSearchDocument[]=[];if(table==="messages"){const byConversation=new Map<string,{conversation?:ConversationRecord;messages:MessageRecord[]}>();for(const item of page.items as MessageRecord[]){const entry=byConversation.get(item.conversationId)??{messages:[]};entry.messages.push(item);byConversation.set(item.conversationId,entry);}const blockWrites:EvidenceBlockRecord[]=[];for(const [conversationId,entry] of byConversation){const conv=snapshot.conversations.find((c)=>c.id===conversationId)??await getOne<ConversationRecord>("conversations",conversationId);entry.conversation=conv;if(conv){const blocks=await buildEvidenceBlocks(conversationId,conv.projectId,entry.messages[0]?.sourceId??conv.sourceId,entry.messages,[]);blockWrites.push(...blocks);const blockMap=new Map<string,string>();for(const block of blocks)for(const id of block.messageIds)blockMap.set(id,block.id);for(const item of entry.messages)docs.push(searchDocForMessage(item,conv.projectId,false,blockMap.get(item.id)));}else for(const item of entry.messages)docs.push(searchDocForMessage(item));}assertStorageLifecycle(rebuildEpoch);await putMany("evidenceBlocks",blockWrites);}else if(table==="atoms"){for(const item of page.items as AtomRecord[])docs.push(searchDocForAtom(item));}else for(const item of page.items as TruthRecord[])docs.push(searchDocForTruth(item));assertStorageLifecycle(rebuildEpoch);await putMany("searchDocs",docs);done+=page.items.length;key=page.lastKey;snapshot.storage={...snapshot.storage,retrievalIndexStatus:"BUILDING",retrievalIndexProgress:total?Math.min(1,done/total):1,indexedDocuments:done};setSnapshot({storage:snapshot.storage});if(page.items.length<SEARCH_INDEX_BATCH)break;await new Promise((resolve)=>setTimeout(resolve,0));assertStorageLifecycle(rebuildEpoch);}}
     assertStorageLifecycle(rebuildEpoch);await metaPut("searchIndexVersion","B2_SEARCH_DOC_V1");const state=await refreshStorageState({retrievalIndexStatus:"READY",retrievalIndexProgress:1,lastVerifiedAt:now()});setSnapshot({storage:state});}catch(error){if(error instanceof StaleStorageLifecycleError)return;snapshot.storage={...snapshot.storage,retrievalIndexStatus:"ERROR",lastError:error instanceof Error?error.message:String(error)};setSnapshot({storage:snapshot.storage});throw error;}finally{searchIndexRebuildPromise=null;}})();return searchIndexRebuildPromise;}
 export async function verifyMemoryStorage():Promise<Brain2StorageState>{const state=await refreshStorageState({lastVerifiedAt:now()});if(state.indexedDocuments<state.totalMessages+state.totalAtoms+state.totalTruths&&state.totalMessages>0){state.retrievalIndexStatus="PARTIAL";state.retrievalIndexProgress=state.indexedDocuments/Math.max(1,state.totalMessages+state.totalAtoms+state.totalTruths);}setSnapshot({storage:state});return state;}
+
+export async function getBrain2TruthIntegritySummary():Promise<Brain2TruthIntegritySummary>{
+  await bootBrain2();
+  const startedAt=performanceNow();
+  const [currentTruths,messages]=await Promise.all([
+    getAllByIndex<TruthRecord>("truths","byStatus","CURRENT"),
+    readAllPaged<MessageRecord>("messages"),
+  ]);
+  const [currentTruthRoot,providerNeutralCurrentTruthRoot,sourceEvidenceRoot]=await Promise.all([
+    buildCurrentTruthRoot(currentTruths),
+    buildCurrentTruthRoot(currentTruths,{providerNeutral:true}),
+    buildSourceEvidenceRoot(messages),
+  ]);
+  return {
+    generatedAt:now(),
+    durationMs:Math.round(performanceNow()-startedAt),
+    currentTruthCount:currentTruths.length,
+    messageCount:messages.length,
+    currentTruthRoot,
+    providerNeutralCurrentTruthRoot,
+    sourceEvidenceRoot,
+  };
+}
+
+export async function getBrain2DVIDiagnosticsSummary():Promise<Brain2DVIDiagnosticsSummary>{
+  await bootBrain2();
+  const startedAt=performanceNow();
+  const [atoms,messages]=await Promise.all([readAllPaged<AtomRecord>("atoms"),readAllPaged<MessageRecord>("messages")]);
+  const messageById=new Map(messages.map((message)=>[message.id,message]));
+  const byRuleFamily:Brain2DVIDiagnosticsSummary["byRuleFamily"]={};
+  const byHumanRuleFamily:Brain2DVIDiagnosticsSummary["byHumanRuleFamily"]={};
+  const residualReasons:Record<string,number>={};
+  const humanResidualSamples:Brain2DVIDiagnosticsSummary["humanResidualSamples"]=[];
+  const humanResidualSamplesByRuleFamily:Brain2DVIDiagnosticsSummary["humanResidualSamplesByRuleFamily"]={};
+  let strictAtoms=0;
+  let eligible=0;
+  let residual=0;
+  let humanStrictAtoms=0;
+  let humanEligible=0;
+  let humanResidual=0;
+  let assistantOrUnknownStrictAtoms=0;
+  for(const atom of atoms){
+    const traces=atom.ruleTrace??[];
+    const strictTrace=traces.find((trace)=>trace.startsWith("strict_truth:")&&!["strict_truth:eligible","strict_truth:residual"].includes(trace));
+    if(!strictTrace)continue;
+    strictAtoms+=1;
+    const message=messageById.get(atom.messageId);
+    const role=normalizeText(message?.role??"").toLowerCase();
+    const humanAuthored=role==="user"||role==="human";
+    const ruleFamily=strictTrace.replace(/^strict_truth:/,"");
+    const isEligible=traces.includes("strict_truth:eligible");
+    const bucket=byRuleFamily[ruleFamily]??{eligible:0,residual:0,total:0};
+    bucket.total+=1;
+    if(isEligible){bucket.eligible+=1;eligible+=1;}else{bucket.residual+=1;residual+=1;}
+    byRuleFamily[ruleFamily]=bucket;
+    if(humanAuthored){
+      humanStrictAtoms+=1;
+      const humanBucket=byHumanRuleFamily[ruleFamily]??{eligible:0,residual:0,total:0};
+      humanBucket.total+=1;
+      if(isEligible){humanBucket.eligible+=1;humanEligible+=1;}else{humanBucket.residual+=1;humanResidual+=1;}
+      byHumanRuleFamily[ruleFamily]=humanBucket;
+    }else{
+      assistantOrUnknownStrictAtoms+=1;
+    }
+    if(!isEligible){
+      const reason=(atom.boundarySignals??[]).find((signal)=>signal.startsWith("strict_truth:"))?.replace(/^strict_truth:/,"")??"unknown residual reason";
+      residualReasons[reason]=(residualReasons[reason]??0)+1;
+      if(humanAuthored&&humanResidualSamples.length<30){
+        humanResidualSamples.push({ruleFamily,reason,text:atom.text,messageRole:message?.role});
+      }
+      if(humanAuthored){
+        const samples=humanResidualSamplesByRuleFamily[ruleFamily]??[];
+        if(samples.length<6)samples.push({reason,text:atom.text,messageRole:message?.role});
+        humanResidualSamplesByRuleFamily[ruleFamily]=samples;
+      }
+    }
+  }
+  return {
+    generatedAt:now(),
+    durationMs:Math.round(performanceNow()-startedAt),
+    atomCount:atoms.length,
+    strictAtoms,
+    eligible,
+    residual,
+    humanStrictAtoms,
+    humanEligible,
+    humanResidual,
+    assistantOrUnknownStrictAtoms,
+    mrsPressureResidual:humanResidual,
+    byRuleFamily,
+    byHumanRuleFamily,
+    residualReasons,
+    humanResidualSamples,
+    humanResidualSamplesByRuleFamily,
+  };
+}
+
+export async function getBrain2ProjectDiagnosticsSummary():Promise<Brain2ProjectDiagnosticsSummary>{
+  await bootBrain2();
+  const startedAt=performanceNow();
+  const [atoms,messages,currentTruths]=await Promise.all([
+    readAllPaged<AtomRecord>("atoms"),
+    readAllPaged<MessageRecord>("messages"),
+    getAllByIndex<TruthRecord>("truths","byStatus","CURRENT"),
+  ]);
+  const messageById=new Map(messages.map((message)=>[message.id,message]));
+  const messagesByProject=new Map<string,number>();
+  for(const conversation of snapshot.conversations)messagesByProject.set(conversation.projectId,(messagesByProject.get(conversation.projectId)??0)+(conversation.messageCount??0));
+  const atomsByProject=new Map<string,AtomRecord[]>();
+  for(const atom of atoms){
+    const list=atomsByProject.get(atom.projectId)??[];
+    list.push(atom);
+    atomsByProject.set(atom.projectId,list);
+  }
+  const currentTruthsByProject=new Map<string,number>();
+  for(const truth of currentTruths)currentTruthsByProject.set(truth.projectId,(currentTruthsByProject.get(truth.projectId)??0)+1);
+  const artifactByProject=new Map(snapshot.derivedArtifacts.filter((item)=>item.kind==="PROJECT_INTELLIGENCE"&&item.projectId).map((item)=>[item.projectId as string,item]));
+  const projects=snapshot.projects.map((project)=>{
+    const projectAtoms=atomsByProject.get(project.id)??[];
+    const byHumanRuleFamily:Record<string,{eligible:number;residual:number;total:number}>={};
+    const residualSamples:Brain2ProjectDiagnosticsSummary["projects"][number]["deterministic"]["residualSamples"]=[];
+    let eligible=0,residual=0,humanEligible=0,humanResidual=0,assistantBlocked=0;
+    for(const atom of projectAtoms){
+      const traces=atom.ruleTrace??[];
+      const strictTrace=traces.find((trace)=>trace.startsWith("strict_truth:")&&!["strict_truth:eligible","strict_truth:residual"].includes(trace));
+      if(!strictTrace)continue;
+      const ruleFamily=strictTrace.replace(/^strict_truth:/,"");
+      const isEligible=traces.includes("strict_truth:eligible");
+      const message=messageById.get(atom.messageId);
+      const role=normalizeText(message?.role??"").toLowerCase();
+      const humanAuthored=role==="user"||role==="human";
+      if(isEligible)eligible+=1;else residual+=1;
+      if(!humanAuthored){
+        if(ruleFamily==="assistant_or_unknown_author")assistantBlocked+=1;
+        continue;
+      }
+      const bucket=byHumanRuleFamily[ruleFamily]??{eligible:0,residual:0,total:0};
+      bucket.total+=1;
+      if(isEligible){bucket.eligible+=1;humanEligible+=1;}else{bucket.residual+=1;humanResidual+=1;}
+      byHumanRuleFamily[ruleFamily]=bucket;
+      if(!isEligible&&residualSamples.length<8){
+        const reason=(atom.boundarySignals??[]).find((signal)=>signal.startsWith("strict_truth:"))?.replace(/^strict_truth:/,"")??"unknown residual reason";
+        residualSamples.push({ruleFamily,reason,text:atom.text,atomId:atom.id,messageId:atom.messageId});
+      }
+    }
+    const artifact=artifactByProject.get(project.id);
+    const projection=parseProjectIntelligence(artifact);
+    const unresolved=projectIntelligencePendingCount(projection);
+    const status=projectIntelligenceMRSStatus(project.id,artifact,unresolved);
+    const projectionItems=[...(projection?.currentTruth??[]),...(projection?.importantIdeas??[]),...(projection?.changes??[]),...(projection?.connections??[]),...(projection?.openQuestions??[])];
+    const samplePendingAtoms=(projection?.unresolved??[]).slice(0,5).map((item)=>({id:item.id,statement:item.statement,kind:item.kind,evidenceIds:item.evidenceIds}));
+    return {
+      projectId:project.id,
+      projectName:project.name,
+      deterministic:{
+        messages:messagesByProject.get(project.id)??0,
+        atoms:projectAtoms.length,
+        currentTruths:currentTruthsByProject.get(project.id)??0,
+        eligible,
+        residual,
+        humanEligible,
+        humanResidual,
+        assistantBlocked,
+        byHumanRuleFamily,
+        residualSamples,
+      },
+      mrs:{
+        artifactState:artifact?.state,
+        runtime:artifact?.mrsRuntime,
+        unresolved,
+        unresolvedShown:projection?.unresolved.length??0,
+        reviewed:projection?.mrsReviewedCandidateIds?.length??0,
+        deterministicVerified:projectionItems.filter((item)=>item.verification==="DETERMINISTIC_VERIFIED").length,
+        verified:projectionItems.filter((item)=>item.verification==="MRS_VERIFIED").length,
+        rejected:projectionItems.filter((item)=>item.verification==="REJECTED").length,
+        lastAttemptAt:artifact?.lastMRSAttemptAt,
+        lastError:artifact?.lastMRSError,
+        status,
+        processing:status==="RUNNING",
+        queued:status==="QUEUED",
+        samplePendingAtoms,
+      },
+    };
+  }).sort((a,b)=>b.mrs.unresolved-a.mrs.unresolved||b.deterministic.humanResidual-a.deterministic.humanResidual||a.projectName.localeCompare(b.projectName));
+  return {generatedAt:now(),durationMs:Math.round(performanceNow()-startedAt),projects};
+}
 
 async function put<T extends AnyRecord>(table: TableName, value: T): Promise<void> {
   const db = await openDb();
@@ -893,7 +1242,14 @@ export async function ingestNormalizedConversation(input: NormalizedConversation
     const loadedTruthGroupKeys=new Set(localTruthGroups.keys());
     const localDecisionByAtomId=new Map(decisionByAtomId);
 
-    for (const raw of input.messages) {
+    const canonicalTruthMessages=toCanonicalTruthMessages(input,conversationId);
+    const strictDerivedCandidates=deriveStrictCurrentTruthCandidates(canonicalTruthMessages);
+    const strictTruthContext=createStrictCurrentTruthContext();
+
+    for (let rawIndex=0; rawIndex<input.messages.length; rawIndex+=1) {
+      const raw=input.messages[rawIndex];
+      const canonicalTruthMessage=canonicalTruthMessages[rawIndex];
+      if(canonicalTruthMessage?.role==="assistant")noteStrictAssistantMessage(strictTruthContext,canonicalTruthMessage);
       const text=normalizeText(raw.text); if(!text) continue;
       const id=await canonicalMessageId({provider:input.provider,conversationId,providerMessageId:raw.providerMessageId || raw.externalId,providerNodeId:raw.providerNodeId,parentProviderNodeId:raw.parentProviderNodeId,branchId:raw.branchId,sequence:raw.sequence,role:raw.role,text});
       if(localMessageIds.has(id)) continue;
@@ -902,12 +1258,18 @@ export async function ingestNormalizedConversation(input: NormalizedConversation
       const message:MessageRecord={id,conversationId,sourceId:source.id,provider:input.provider,externalId:raw.externalId || id,role:raw.role,text,createdAt:occurredAt,occurredAt,capturedAt:raw.capturedAt,timestampSource:raw.timestampSource ?? (occurredAt?"archive":"unknown"),sequence:raw.sequence,providerMessageId:raw.providerMessageId,providerNodeId:raw.providerNodeId,parentProviderNodeId:raw.parentProviderNodeId,branchId:raw.branchId,captureId:raw.captureId,captureUrl:raw.captureUrl,captureConnectorId:raw.captureConnectorId,hash,wordCount:wordCount(text),schemaVersion:BRAIN2_SCHEMA_VERSION};
       messageWrites.push(message); localMessageIds.add(id);
 
-      for (const candidate of atomizeMessage(text,raw.role)) {
-        const atomHash=await sha256(`${candidate.kind}|${candidate.canonicalSubject}|${candidate.text}|${message.id}`);
+      const candidates=[...atomizeMessage(text,raw.role),...(strictDerivedCandidates.get(canonicalTruthMessage?.messageKey ?? "") ?? [])];
+      for (const candidate of candidates) {
+        const strictTruth=evaluateStrictCurrentTruthCandidate(candidate,canonicalTruthMessage,strictTruthContext);
+        const effectiveKind=strictTruth.eligible && strictTruth.truthKind ? strictTruth.truthKind : candidate.kind;
+        const candidateKeywords=candidate.keywords ?? keywords(candidate.text,10);
+        const candidateConfidence=candidate.confidence ?? 0.72;
+        const atomHash=await sha256(`${effectiveKind}|${candidate.canonicalSubject}|${candidate.text}|${message.id}`);
         const atomId=`atom_${atomHash.slice(0,24)}`;
         if(localAtomIds.has(atomId)) continue;
-        const atom:AtomRecord={id:atomId,messageId:message.id,conversationId,projectId:project.id,sourceId:source.id,kind:candidate.kind,subject:candidate.subject,canonicalSubject:candidate.canonicalSubject,value:candidate.value,polarity:candidate.polarity,scope:candidate.scope,sourceStart:candidate.sourceStart,sourceEnd:candidate.sourceEnd,semanticSubtype:candidate.semanticSubtype,ruleTrace:candidate.ruleTrace,relationSafe:candidate.relationSafe,atomizationArm:candidate.atomizationArm,boundarySignals:candidate.boundarySignals,hierarchyRole:candidate.hierarchyRole,sequenceIndex:candidate.sequenceIndex,cohesionType:candidate.cohesionType,intrinsicSufficiency:candidate.intrinsicSufficiency,fallbackPolicy:candidate.fallbackPolicy,validFrom:occurredAt,text:candidate.text,createdAt:occurredAt,confidence:candidate.confidence,provenance:[message.id],keywords:candidate.keywords,hash:atomHash,extractionVersion:candidate.extractionVersion,schemaVersion:BRAIN2_SCHEMA_VERSION};
+        const atom:AtomRecord={id:atomId,messageId:message.id,conversationId,projectId:project.id,sourceId:source.id,kind:effectiveKind,subject:candidate.subject,canonicalSubject:candidate.canonicalSubject,value:candidate.value,polarity:candidate.polarity,scope:candidate.scope,sourceStart:candidate.sourceStart,sourceEnd:candidate.sourceEnd,semanticSubtype:candidate.semanticSubtype,ruleTrace:[...(candidate.ruleTrace??[]),`strict_truth:${strictTruth.ruleFamily}`,`strict_truth:${strictTruth.eligible?"eligible":"residual"}`],relationSafe:candidate.relationSafe,atomizationArm:candidate.atomizationArm,boundarySignals:[...(candidate.boundarySignals??[]),`strict_truth:${strictTruth.reason}`],hierarchyRole:candidate.hierarchyRole,sequenceIndex:candidate.sequenceIndex,cohesionType:candidate.cohesionType,intrinsicSufficiency:candidate.intrinsicSufficiency,fallbackPolicy:candidate.fallbackPolicy,validFrom:occurredAt,text:candidate.text,createdAt:occurredAt,confidence:strictTruth.eligible?Math.min(0.98,Math.max(candidateConfidence,0.82)):candidateConfidence,provenance:[message.id],keywords:candidateKeywords,hash:atomHash,extractionVersion:candidate.extractionVersion,schemaVersion:BRAIN2_SCHEMA_VERSION};
         atomWrites.push(atom); localAtomIds.add(atomId);
+        if(!strictTruth.eligible){atom.truthStatus="UNKNOWN";continue;}
         const groupKey=truthGroupKey(atom.projectId,atom.kind);
         if(!loadedTruthGroupKeys.has(groupKey)){const persisted=await getAllByIndex<TruthRecord>("truths","byProjectKind",[atom.projectId,atom.kind]);localTruthGroups.set(groupKey,mergeById(localTruthGroups.get(groupKey)??[],persisted));loadedTruthGroupKeys.add(groupKey);}
         const reconciliation=await reconcileAtomToTruth(atom,raw.role,localTruthGroups.get(groupKey) ?? []);
@@ -989,13 +1351,32 @@ export async function ingestNormalizedConversation(input: NormalizedConversation
 
 export async function finalizeDeferredDerivations(): Promise<void> {
   await bootBrain2();
+  const startedAt=performanceNow();
   const projectIds=projectIdsForCommittedJournals();
+  const patternStartedAt=performanceNow();
   await refreshDerivedPatterns();
+  const patternDurationMs=performanceNow()-patternStartedAt;
+  const projectRefreshStartedAt=performanceNow();
   await refreshProjectIntelligenceArtifacts(projectIds.length?projectIds:undefined);
+  const projectRefreshDurationMs=performanceNow()-projectRefreshStartedAt;
   const writes=snapshot.journals.filter((item)=>item.status === "COMMITTED").map((item)=>({...item,status:"DERIVED" as const,updatedAt:now()}));
+  const journalWriteStartedAt=performanceNow();
   await putMany("journals",writes);
+  const journalWriteDurationMs=performanceNow()-journalWriteStartedAt;
   snapshot.journals=mergeById(snapshot.journals,writes);
   setSnapshot({patterns:snapshot.patterns,derivedArtifacts:snapshot.derivedArtifacts,journals:snapshot.journals});
+  const pendingMRSProjectIds=getProjectsWithPendingMRS().filter((projectId)=>!projectIds.length||projectIds.includes(projectId));
+  brain2MRSLog("derivations.queue-mrs-after-finalize", { projectCount: projectIds.length, pendingMRSProjects: pendingMRSProjectIds.length });
+  if(pendingMRSProjectIds.length){
+    void requestPendingProjectIntelligenceMRS({idle:false,projectIds:pendingMRSProjectIds,limit:pendingMRSProjectIds.length}).catch((error)=>brain2MRSError("derivations.queue-mrs-after-finalize.error", { error: error instanceof Error ? error.message : String(error) }));
+  }
+  await recordResponsivenessTelemetry("derivations.finalize",performanceNow()-startedAt,{
+    projectCount:projectIds.length,
+    committedJournals:writes.length,
+    patternDurationMs:Math.round(patternDurationMs),
+    projectRefreshDurationMs:Math.round(projectRefreshDurationMs),
+    journalWriteDurationMs:Math.round(journalWriteDurationMs),
+  });
 }
 
 function scheduleIdleTask(run:()=>void,timeout=7000){
@@ -1052,14 +1433,70 @@ export function getProjectsWithPendingMRS(){
   return snapshot.derivedArtifacts
     .filter((item)=>item.kind==="PROJECT_INTELLIGENCE"&&item.projectId)
     .map((item)=>({item,projection:parseProjectIntelligence(item)}))
-    .filter(({item,projection})=>Boolean(projection?.unresolved.length)&&item.state!=="MRS_READY"&&item.state!=="MRS_REFINING")
+    .filter(({item,projection})=>Boolean(projectIntelligencePendingCount(projection))&&(item.state!=="MRS_REFINING"||isProjectIntelligenceMRSRefiningStale(item))&&!isProjectIntelligenceMRSQueuedOrRunning(item.projectId as string))
     .map(({item})=>item.projectId as string);
+}
+
+export function getProjectIntelligenceMRSDebugSummary(){
+  const projectNameById=new Map(snapshot.projects.map((project)=>[project.id,project.name]));
+  const artifacts=snapshot.derivedArtifacts
+    .filter((item)=>item.kind==="PROJECT_INTELLIGENCE"&&item.projectId)
+    .map((item)=>{
+      const projection=parseProjectIntelligence(item);
+      return {
+        projectId:item.projectId as string,
+        projectName:projectNameById.get(item.projectId as string)??"Unknown project",
+        state:item.state,
+        mrsRuntime:item.mrsRuntime,
+        unresolved:projectIntelligencePendingCount(projection),
+        unresolvedShown:projection?.unresolved.length??0,
+        currentTruth:projection?.currentTruth.length??0,
+        importantIdeas:projection?.importantIdeas.length??0,
+        lastMRSAttemptAt:item.lastMRSAttemptAt,
+        lastMRSError:item.lastMRSError,
+        updatedAt:item.updatedAt,
+        staleRefining:isProjectIntelligenceMRSRefiningStale(item),
+      };
+    });
+  const byState=artifacts.reduce<Record<string,number>>((acc,item)=>{
+    acc[item.state]=(acc[item.state]??0)+1;
+    return acc;
+  },{});
+  const withUnresolved=artifacts.filter((item)=>item.unresolved>0);
+  const eligible=withUnresolved.filter((item)=>item.state!=="MRS_REFINING"||item.staleRefining);
+  const refining=withUnresolved.filter((item)=>item.state==="MRS_REFINING");
+  const staleRefining=withUnresolved.filter((item)=>item.staleRefining);
+  const staleReady=withUnresolved.filter((item)=>item.state==="MRS_READY");
+  const projectsWithoutArtifacts=snapshot.projects
+    .filter((project)=>!artifacts.some((item)=>item.projectId===project.id))
+    .map((project)=>({projectId:project.id,projectName:project.name}))
+    .slice(0,20);
+  return {
+    projects:snapshot.projects.length,
+    projectIntelligenceArtifacts:artifacts.length,
+    byState,
+    unresolvedProjects:withUnresolved.length,
+    unresolvedCandidates:withUnresolved.reduce((sum,item)=>sum+item.unresolved,0),
+    eligibleProjects:eligible.length,
+    refiningProjects:refining.length,
+    staleRefiningProjects:staleRefining.length,
+    staleReadyWithUnresolved:staleReady.length,
+    projectsWithoutArtifacts:projectsWithoutArtifacts.length,
+    eligible:eligible.slice(0,20),
+    refining:refining.slice(0,20),
+    staleRefining:staleRefining.slice(0,20),
+    staleReady:staleReady.slice(0,20),
+    missingArtifacts:projectsWithoutArtifacts,
+  };
 }
 
 export async function refreshProjectIntelligenceArtifacts(projectIds?:string[]):Promise<DerivedArtifactRecord[]>{
   await bootBrain2();
+  const startedAt=performanceNow();
   const targets=(projectIds?.length?projectIds:[...new Set(snapshot.projects.map((project)=>project.id))]).filter(Boolean);
   const out:DerivedArtifactRecord[]=[];
+  let rebuiltCount=0;
+  let cacheHitCount=0;
   for(const projectId of targets){
     const key=projectId;
     if(projectIntelligenceRefreshes.has(key)){
@@ -1068,14 +1505,51 @@ export async function refreshProjectIntelligenceArtifacts(projectIds?:string[]):
       continue;
     }
     const pending=(async()=>{
+      const projectStartedAt=performanceNow();
       const input=await buildProjectIntelligenceInput(projectId);
       if(!input)return null;
+      const afterInputAt=performanceNow();
       const sourceVersion=await buildProjectIntelligenceSourceVersion(input);
+      const afterSourceVersionAt=performanceNow();
       const existing=getCachedProjectIntelligence(projectId);
-      if(existing?.sourceVersion===sourceVersion)return existing;
-      const projection=await buildDeterministicProjectIntelligence(input);
+      if(existing?.sourceVersion===sourceVersion){
+        cacheHitCount+=1;
+        const totalProjectDurationMs=performanceNow()-projectStartedAt;
+        if(totalProjectDurationMs>=16){
+          await recordResponsivenessTelemetry("project_intelligence.refresh_project",totalProjectDurationMs,{
+            projectId,
+            cacheHit:true,
+            atomCount:input.atoms.length,
+            truthCount:input.truths.length,
+            inputDurationMs:Math.round(afterInputAt-projectStartedAt),
+            sourceVersionDurationMs:Math.round(afterSourceVersionAt-afterInputAt),
+            buildDurationMs:0,
+            persistDurationMs:0,
+          });
+        }
+        return existing;
+      }
+      const projection=await buildDeterministicProjectIntelligenceOffMainThread(input);
+      const afterBuildAt=performanceNow();
       const record=buildProjectIntelligenceArtifact({projectId,sourceVersion,projection,phase:"deterministic",createdAt:existing?.createdAt});
+      const persistStartedAt=performanceNow();
       await putDerivedArtifacts([record]);
+      rebuiltCount+=1;
+      const totalProjectDurationMs=performanceNow()-projectStartedAt;
+      if(totalProjectDurationMs>=16){
+        await recordResponsivenessTelemetry("project_intelligence.refresh_project",totalProjectDurationMs,{
+          projectId,
+          cacheHit:false,
+          atomCount:input.atoms.length,
+          truthCount:input.truths.length,
+          unresolvedCount:projectIntelligencePendingCount(projection),
+          offMainThread:typeof window!=="undefined"&&typeof Worker!=="undefined",
+          inputDurationMs:Math.round(afterInputAt-projectStartedAt),
+          sourceVersionDurationMs:Math.round(afterSourceVersionAt-afterInputAt),
+          buildDurationMs:Math.round(afterBuildAt-afterSourceVersionAt),
+          persistDurationMs:Math.round(performanceNow()-persistStartedAt),
+        });
+      }
       return record;
     })().finally(()=>{projectIntelligenceRefreshes.delete(key);});
     projectIntelligenceRefreshes.set(key,pending);
@@ -1083,6 +1557,11 @@ export async function refreshProjectIntelligenceArtifacts(projectIds?:string[]):
     if(result)out.push(result);
     await new Promise((resolve)=>setTimeout(resolve,0));
   }
+  await recordResponsivenessTelemetry("project_intelligence.refresh_batch",performanceNow()-startedAt,{
+    targetCount:targets.length,
+    rebuiltCount,
+    cacheHitCount,
+  });
   return out;
 }
 
@@ -1097,32 +1576,122 @@ export async function requestProjectIntelligenceMRS(projectId:string,options:{id
   await bootBrain2();
   const existing=getCachedProjectIntelligence(projectId);
   const projection=parseProjectIntelligence(existing);
-  if(!existing||!projection?.unresolved.length||existing.state==="MRS_READY"||existing.state==="MRS_REFINING")return existing ?? null;
+  const activeOrScheduled=isProjectIntelligenceMRSQueuedOrRunning(projectId);
+  brain2MRSLog("queue.project.request", {
+    projectId,
+    hasArtifact: Boolean(existing),
+    state: existing?.state,
+    mrsRuntime: existing?.mrsRuntime,
+    unresolved: projectIntelligencePendingCount(projection),
+    unresolvedShown: projection?.unresolved.length ?? 0,
+    activeOrScheduled,
+  });
+  if(activeOrScheduled){
+    brain2MRSLog("queue.project.skip-active", { projectId, state: existing?.state, unresolved: projectIntelligencePendingCount(projection) });
+    return existing ?? null;
+  }
+  const staleRefining=existing?isProjectIntelligenceMRSRefiningStale(existing):false;
+  if(existing?.state==="MRS_REFINING"&&staleRefining){
+    brain2MRSLog("queue.project.recover-stale-refining", { projectId, updatedAt: existing.updatedAt, unresolved: projectIntelligencePendingCount(projection) });
+  }
+  if(!existing||!projectIntelligencePendingCount(projection)||(existing.state==="MRS_REFINING"&&!staleRefining)){
+    brain2MRSLog("queue.project.skip-state", {
+      projectId,
+      hasArtifact: Boolean(existing),
+      state: existing?.state,
+      unresolved: projectIntelligencePendingCount(projection),
+      staleRefining,
+    });
+    return existing ?? null;
+  }
   const runtime=getBrain2TransformersSnapshot();
-  if(!isBrain2MRSReady(runtime))return existing;
+  if(!isBrain2MRSReady(runtime)){
+    brain2MRSLog("queue.project.skip-runtime", { projectId, state: runtime.state, mrsState: runtime.mrsState });
+    return existing;
+  }
   const input=await buildProjectIntelligenceInput(projectId);
-  if(!input)return null;
+  if(!input){
+    brain2MRSLog("queue.project.skip-input", { projectId });
+    return null;
+  }
   const sourceVersion=await buildProjectIntelligenceSourceVersion(input);
-  if(existing.sourceVersion!==sourceVersion)return existing;
+  let mrsInput=input;
+  let mrsSourceVersion=sourceVersion;
+  let mrsArtifact=existing;
+  if(existing.sourceVersion!==sourceVersion){
+    brain2MRSLog("queue.project.refresh-stale", { projectId, existing: existing.sourceVersion, current: sourceVersion });
+    const [fresh]=await refreshProjectIntelligenceArtifacts([projectId]);
+    const freshProjection=parseProjectIntelligence(fresh);
+    const freshStaleRefining=fresh?isProjectIntelligenceMRSRefiningStale(fresh):false;
+    if(!fresh||!projectIntelligencePendingCount(freshProjection)||(fresh.state==="MRS_REFINING"&&!freshStaleRefining)){
+      brain2MRSLog("queue.project.skip-after-refresh", {
+        projectId,
+        hasArtifact: Boolean(fresh),
+        state: fresh?.state,
+        unresolved: projectIntelligencePendingCount(freshProjection),
+        staleRefining:freshStaleRefining,
+      });
+      return fresh ?? existing;
+    }
+    const freshInput=await buildProjectIntelligenceInput(projectId);
+    if(!freshInput){
+      brain2MRSLog("queue.project.skip-input-after-refresh", { projectId });
+      return fresh;
+    }
+    mrsInput=freshInput;
+    mrsSourceVersion=await buildProjectIntelligenceSourceVersion(freshInput);
+    mrsArtifact=fresh;
+    if(fresh.sourceVersion!==mrsSourceVersion){
+      brain2MRSLog("queue.project.skip-source-version-after-refresh", { projectId, existing: fresh.sourceVersion, current: mrsSourceVersion });
+      return fresh;
+    }
+  }
   const schedule=(run:()=>void)=>{
-    if(options.idle===false||typeof window==="undefined"){run();return;}
+    if(options.idle===false||typeof window==="undefined"){
+      brain2MRSLog("queue.project.schedule-now", { projectId, idle: options.idle !== false });
+      run();
+      return;
+    }
     const priorTimer=projectIntelligenceMRSScheduleTimers.get(projectId);
     if(priorTimer)window.clearTimeout(priorTimer);
+    brain2MRSLog("queue.project.schedule-idle", { projectId });
     const timer=window.setTimeout(()=>{
       projectIntelligenceMRSScheduleTimers.delete(projectId);
       const idle=(window as typeof window & {requestIdleCallback?:(cb:()=>void,opts?:{timeout:number})=>number}).requestIdleCallback;
-      if(idle)idle(run,{timeout:2500});else window.setTimeout(run,0);
+      const runQueued=()=>{
+        brain2MRSLog("queue.project.idle-fired", { projectId });
+        run();
+      };
+      if(idle)idle(runQueued,{timeout:2500});else window.setTimeout(runQueued,0);
     },120);
     projectIntelligenceMRSScheduleTimers.set(projectId,timer);
   };
-  schedule(()=>{void queueProjectIntelligenceMRS(projectId,input,sourceVersion,existing);});
-  return existing;
+  schedule(()=>{void queueProjectIntelligenceMRS(projectId,mrsInput,mrsSourceVersion,mrsArtifact);});
+  return mrsArtifact;
 }
 
-export async function requestPendingProjectIntelligenceMRS(options:{idle?:boolean;projectIds?:string[]}={}):Promise<void>{
+export async function requestPendingProjectIntelligenceMRS(options:{idle?:boolean;projectIds?:string[];limit?:number}={}):Promise<void>{
   await bootBrain2();
-  const targets=(options.projectIds?.length?options.projectIds:getProjectsWithPendingMRS()).filter(Boolean);
-  for(const projectId of [...new Set(targets)]){
+  const targets=[...new Set((options.projectIds?.length?options.projectIds:getProjectsWithPendingMRS()).filter(Boolean))];
+  const limited=(options.limit&&options.limit>0)?targets.slice(0,options.limit):targets;
+  const runtime=getBrain2TransformersSnapshot();
+  brain2MRSLog("queue.request", {
+    targets: targets.length,
+    limit: options.limit,
+    selected: limited.length,
+    idle: options.idle !== false,
+    runtimeReady: isBrain2MRSReady(runtime),
+    runtimeState: runtime.state,
+    mrsState: runtime.mrsState,
+  });
+  for(const projectId of limited){
+    const artifact=parseProjectIntelligence(snapshot.derivedArtifacts.find((item)=>item.id===projectIntelligenceArtifactId(projectId)));
+    brain2MRSLog("queue.project.selected", {
+      projectId,
+      mrsRuntime: artifact?.mrsRuntime,
+      unresolved: projectIntelligencePendingCount(artifact),
+      unresolvedShown: artifact?.unresolved.length ?? 0,
+    });
     await requestProjectIntelligenceMRS(projectId,{idle:options.idle});
     await new Promise((resolve)=>setTimeout(resolve,0));
   }
@@ -1203,7 +1772,7 @@ export async function recordControllerLearning(run:{
   projectId?:string;
   createdAt:string;
   usedMRS:boolean;
-  terminatedBy:"BRANCH_ZERO"|"TINY_SPECIALIST"|"QWEN"|"REPAIR";
+  terminatedBy:"BRANCH_ZERO"|"TINY_SPECIALIST"|"MRS_MODEL"|"REPAIR";
   confidence:number;
   result:{answer:string;evidenceIds:string[]};
   verification:{status:"PASS"|"FAIL"|"PENDING";detail:string};
@@ -1302,6 +1871,11 @@ async function flushDerivedPatternsRefreshQueue():Promise<void>{
         await refreshDerivedPatterns();
         await refreshProjectIntelligenceArtifacts(targets.length?targets:undefined);
         setSnapshot({patterns:snapshot.patterns,derivedArtifacts:snapshot.derivedArtifacts});
+        const pendingMRSProjectIds=getProjectsWithPendingMRS().filter((projectId)=>!targets.length||targets.includes(projectId));
+        brain2MRSLog("derived-refresh.queue-mrs", { targetCount: targets.length, pendingMRSProjects: pendingMRSProjectIds.length });
+        if(pendingMRSProjectIds.length){
+          void requestPendingProjectIntelligenceMRS({idle:false,projectIds:pendingMRSProjectIds,limit:pendingMRSProjectIds.length}).catch((error)=>brain2MRSError("derived-refresh.queue-mrs.error", { error: error instanceof Error ? error.message : String(error) }));
+        }
         await new Promise((resolve)=>setTimeout(resolve,0));
       }while(derivedRefreshQueued);
     }finally{
@@ -1349,16 +1923,35 @@ export async function finalizeSyncBootstrap(){await reloadBrain2FromDisk();setTi
 
 export async function reloadBrain2FromDisk(){clearScheduledRefreshWork();snapshot={...emptySnapshot,storage:{...emptyStorage}};mutationSequence=0;secondaryBootHydrationPromise=null;rebuildIngestionIndexes();await bootBrain2();}
 
+async function buildB2MIntegrity(tableData:Record<string,unknown>){
+  const currentTruths=Array.isArray(tableData.truths)?(tableData.truths as TruthRecord[]).filter((truth)=>truth.status==="CURRENT"):[];
+  const messages=Array.isArray(tableData.messages)?tableData.messages as MessageRecord[]:[];
+  const [currentTruthRoot,providerNeutralCurrentTruthRoot,sourceEvidenceRoot]=await Promise.all([
+    buildCurrentTruthRoot(currentTruths),
+    buildCurrentTruthRoot(currentTruths,{providerNeutral:true}),
+    buildSourceEvidenceRoot(messages),
+  ]);
+  return {currentTruthRoot,providerNeutralCurrentTruthRoot,sourceEvidenceRoot};
+}
+
 async function buildB2MPayload(){
-  const portableTables=TABLES.filter((table)=>table!=="meta"&&table!=="searchDocs");const tableData:Record<string,unknown>={};for(const table of portableTables)tableData[table]=await all(table);const tableHashes:Record<string,string>={};for(const [table,value] of Object.entries(tableData))tableHashes[table]=await sha256(JSON.stringify(value));const stateHash=await sha256(Object.entries(tableHashes).sort(([a],[b])=>a.localeCompare(b)).map(([table,hash])=>`${table}:${hash}`).join("|"));return {format:"B2M",version:4,schemaVersion:BRAIN2_SCHEMA_VERSION,memoryRoot:snapshot.memoryRoot,exportedAt:now(),manifest:{stateHash,tableHashes,derivedExcluded:["searchDocs"]},tables:tableData};
+  const portableTables=TABLES.filter((table)=>table!=="meta"&&table!=="searchDocs");const tableData:Record<string,unknown>={};for(const table of portableTables){tableData[table]=await all(table);await new Promise((resolve)=>setTimeout(resolve,0));}const tableHashes:Record<string,string>={};for(const [table,value] of Object.entries(tableData)){tableHashes[table]=await sha256(JSON.stringify(value));await new Promise((resolve)=>setTimeout(resolve,0));}const integrity=await buildB2MIntegrity(tableData);const stateHash=await sha256(Object.entries(tableHashes).sort(([a],[b])=>a.localeCompare(b)).map(([table,hash])=>`${table}:${hash}`).join("|"));return {format:"B2M",version:4,schemaVersion:BRAIN2_SCHEMA_VERSION,memoryRoot:snapshot.memoryRoot,exportedAt:now(),manifest:{stateHash,tableHashes,...integrity,derivedExcluded:["searchDocs"]},tables:tableData};
 }
-export async function exportB2M(passphrase?:string):Promise<Blob>{await bootBrain2();const payload=JSON.stringify(await buildB2MPayload());if(!passphrase)return new Blob([payload],{type:"application/vnd.brain2.b2m+json"});const salt=crypto.getRandomValues(new Uint8Array(16));const iv=crypto.getRandomValues(new Uint8Array(12));const baseKey=await crypto.subtle.importKey("raw",new TextEncoder().encode(passphrase),"PBKDF2",false,["deriveKey"]);const key=await crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations:200000},baseKey,{name:"AES-GCM",length:256},false,["encrypt"]);const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(payload));const encoded={format:"B2M-ENCRYPTED",version:4,kdf:"PBKDF2-SHA256-200000",cipher:"AES-256-GCM",salt:btoa(String.fromCharCode(...salt)),iv:btoa(String.fromCharCode(...iv)),data:btoa(String.fromCharCode(...new Uint8Array(ciphertext)))};return new Blob([JSON.stringify(encoded)],{type:"application/vnd.brain2.b2m+json"});}
+export async function exportB2M(passphrase?:string):Promise<Blob>{return runBrain2ForegroundTask("B2M_EXPORT",async()=>{await bootBrain2();const startedAt=performanceNow();const payload=JSON.stringify(await buildB2MPayload());if(!passphrase){await recordResponsivenessTelemetry("b2m.export_total",performanceNow()-startedAt,{encrypted:false,sizeBytes:payload.length});return new Blob([payload],{type:"application/vnd.brain2.b2m+json"});}const salt=crypto.getRandomValues(new Uint8Array(16));const iv=crypto.getRandomValues(new Uint8Array(12));const baseKey=await crypto.subtle.importKey("raw",new TextEncoder().encode(passphrase),"PBKDF2",false,["deriveKey"]);const key=await crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations:200000},baseKey,{name:"AES-GCM",length:256},false,["encrypt"]);const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(payload));const encoded={format:"B2M-ENCRYPTED",version:4,kdf:"PBKDF2-SHA256-200000",cipher:"AES-256-GCM",salt:btoa(String.fromCharCode(...salt)),iv:btoa(String.fromCharCode(...iv)),data:btoa(String.fromCharCode(...new Uint8Array(ciphertext)))};const out=JSON.stringify(encoded);await recordResponsivenessTelemetry("b2m.export_total",performanceNow()-startedAt,{encrypted:true,sizeBytes:out.length});return new Blob([out],{type:"application/vnd.brain2.b2m+json"});});}
 function fromBase64(value:string){return Uint8Array.from(atob(value),(char)=>char.charCodeAt(0));}
-export async function importB2M(file:File,passphrase?:string):Promise<void>{await bootBrain2();const raw=JSON.parse(await file.text());let payload=raw;if(raw.format==="B2M-ENCRYPTED"){if(!passphrase)throw new Error("This .B2M is encrypted. Enter its passphrase.");const salt=fromBase64(raw.salt);const iv=fromBase64(raw.iv);const cipher=fromBase64(raw.data);const baseKey=await crypto.subtle.importKey("raw",new TextEncoder().encode(passphrase),"PBKDF2",false,["deriveKey"]);const key=await crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations:200000},baseKey,{name:"AES-GCM",length:256},false,["decrypt"]);const clear=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,cipher);payload=JSON.parse(new TextDecoder().decode(clear));}
+export async function importB2M(file:File,passphrase?:string):Promise<void>{return runBrain2ForegroundTask("B2M_IMPORT",async()=>{await bootBrain2();const startedAt=performanceNow();const raw=JSON.parse(await file.text());let payload=raw;if(raw.format==="B2M-ENCRYPTED"){if(!passphrase)throw new Error("This .B2M is encrypted. Enter its passphrase.");const salt=fromBase64(raw.salt);const iv=fromBase64(raw.iv);const cipher=fromBase64(raw.data);const baseKey=await crypto.subtle.importKey("raw",new TextEncoder().encode(passphrase),"PBKDF2",false,["deriveKey"]);const key=await crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations:200000},baseKey,{name:"AES-GCM",length:256},false,["decrypt"]);const clear=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,cipher);payload=JSON.parse(new TextDecoder().decode(clear));}
   if(payload.format!=="B2M"||!payload.tables)throw new Error("Not a supported Brain2 .B2M package.");if(snapshot.memoryRoot&&payload.memoryRoot&&snapshot.memoryRoot!==payload.memoryRoot&&snapshot.storage.totalMessages)throw new Error("Memory-root mismatch. Import into an empty Brain2 profile or use a matching .B2M root.");if(payload.manifest?.tableHashes){for(const [table,expected] of Object.entries(payload.manifest.tableHashes as Record<string,string>)){const actual=await sha256(JSON.stringify(payload.tables[table]??[]));if(actual!==expected)throw new Error(`.B2M integrity check failed for ${table}.`);}}
+  const manifest=payload.manifest as Record<string,unknown>|undefined;
+  if(manifest?.currentTruthRoot||manifest?.providerNeutralCurrentTruthRoot||manifest?.sourceEvidenceRoot){
+    const actual=await buildB2MIntegrity(payload.tables as Record<string,unknown>);
+    for(const key of ["currentTruthRoot","providerNeutralCurrentTruthRoot","sourceEvidenceRoot"] as const){
+      const expected=manifest[key];
+      if(typeof expected!=="string")throw new Error(`.B2M integrity check missing ${key}.`);
+      if(actual[key]!==expected)throw new Error(`.B2M integrity check failed for ${key}.`);
+    }
+  }
   clearScheduledRefreshWork();
-  const db=await openDb();const restoreTables=TABLES.filter((item):item is DataTableName=>item!=="meta"&&item!=="searchDocs");await new Promise<void>((resolve,reject)=>{const tx=db.transaction([...restoreTables,"searchDocs","meta"],"readwrite");for(const table of restoreTables){const store=tx.objectStore(table);store.clear();for(const value of Array.isArray(payload.tables[table])?payload.tables[table]:[])store.put(value);}tx.objectStore("searchDocs").clear();tx.objectStore("meta").put({id:"memoryRoot",value:payload.memoryRoot});tx.objectStore("meta").delete("searchIndexVersion");tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error(".B2M atomic restore aborted"));});snapshot={...emptySnapshot,storage:{...emptyStorage}};secondaryBootHydrationPromise=null;rebuildIngestionIndexes();await bootBrain2();setTimeout(()=>{void rebuildPersistentSearchIndex();scheduleDeferredDerivations({delayMs:1200,idleTimeoutMs:9000});},0);
-}
+  const db=await openDb();const restoreTables=TABLES.filter((item):item is DataTableName=>item!=="meta"&&item!=="searchDocs");await new Promise<void>((resolve,reject)=>{const tx=db.transaction([...restoreTables,"searchDocs","meta"],"readwrite");for(const table of restoreTables){const store=tx.objectStore(table);store.clear();for(const value of Array.isArray(payload.tables[table])?payload.tables[table]:[])store.put(value);}tx.objectStore("searchDocs").clear();tx.objectStore("meta").put({id:"memoryRoot",value:payload.memoryRoot});tx.objectStore("meta").delete("searchIndexVersion");tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error(".B2M atomic restore aborted"));});snapshot={...emptySnapshot,storage:{...emptyStorage}};secondaryBootHydrationPromise=null;rebuildIngestionIndexes();await bootBrain2();setTimeout(()=>{void rebuildPersistentSearchIndex();scheduleDeferredDerivations({delayMs:1200,idleTimeoutMs:9000});},0);await recordResponsivenessTelemetry("b2m.import_total",performanceNow()-startedAt,{encrypted:Boolean(raw.format==="B2M-ENCRYPTED"),fileName:file.name});});}
 
 export async function resetBrain2():Promise<void>{
   // Destructive reset is a hard replica boundary. Invalidate every pre-reset

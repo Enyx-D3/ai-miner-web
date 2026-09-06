@@ -45,7 +45,7 @@ const ordered = [
   "\"COGNITIVE_R1\"",
   "\"TRACE_RPVM\"",
   "\"TINY_SPECIALIST\"",
-  "\"WEBLLM_QWEN\"",
+  "\"WEB_MRS_MODEL\"",
   "\"VERIFY\"",
   "\"REPAIR\"",
 ];
@@ -58,8 +58,8 @@ for (const token of ordered) {
   last = next;
 }
 
-if (!controller.includes("Qwen residual lane skipped because deterministic confidence was already high enough")) {
-  throw new Error("Deterministic skip gate for WebLLM/Qwen is missing");
+if (!controller.includes("Browser MRS model residual lane skipped because deterministic confidence was already high enough")) {
+  throw new Error("Deterministic skip gate for browser MRS model is missing");
 }
 
 if (!controller.includes("Branch Zero compiled capability execution")) {

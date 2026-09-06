@@ -15,7 +15,7 @@ export type MRSStageName =
   | "TRACE"
   | "RPVM"
   | "TINY_SPECIALIST"
-  | "QWEN"
+  | "MRS_MODEL"
   | "VERIFIER"
   | "REPAIR";
 
@@ -65,7 +65,7 @@ export type MRSControllerRun = {
   projectId?: string;
   createdAt: string;
   usedMRS: boolean;
-  terminatedBy: "BRANCH_ZERO" | "TINY_SPECIALIST" | "QWEN" | "REPAIR";
+  terminatedBy: "BRANCH_ZERO" | "TINY_SPECIALIST" | "MRS_MODEL" | "REPAIR";
   confidence: number;
   job: B2JobPackage;
   result: B2ResultPackage;
@@ -264,13 +264,13 @@ function cognitiveR1(context: ControllerContext, branchZero: CandidateAnswer | n
   if (knownFailure && knownRepair) return { operation: "CALL_SPECIALIST", confidence: 0.74, reason: "Failure memory found a prior repairable path, so the next useful operation is a bounded specialist repair rather than fresh model-first reasoning." as const };
   if (conflicts > 0) return { operation: "CALL_TINY_SPECIALIST", confidence: 0.76, reason: "Conflict-aware synthesis is needed before any residual model escalation." as const };
   if (topPattern && topPattern.score >= 0.5) return { operation: "CALL_SPECIALIST", confidence: clamp(0.68 + topPattern.score * 0.16), reason: "Pattern memory offers a bounded specialist synthesis path." as const };
-  return { operation: "ESCALATE_QWEN", confidence: 0.58, reason: "Deterministic evidence is bounded but not decisive enough; residual reasoning is warranted." as const };
+  return { operation: "ESCALATE_MRS_MODEL", confidence: 0.58, reason: "Deterministic evidence is bounded but not decisive enough; residual reasoning is warranted." as const };
 }
 
 function traceStage(context: ControllerContext, r1: ReturnType<typeof cognitiveR1>) {
   const hasEvidence = context.job.evidence.length > 0;
   const hasDependencies = r1.operation !== "CALL_SPECIALIST" || Boolean(context.capabilityMatches[0] || context.patternMatches[0] || conflictingEvidence(context.job).length || currentTruthEvidence(context.job).length);
-  const deterministicOnly = r1.operation !== "ESCALATE_QWEN";
+  const deterministicOnly = r1.operation !== "ESCALATE_MRS_MODEL";
   return {
     status: hasEvidence && hasDependencies ? "PASS" : "FAIL",
     confidence: clamp((hasEvidence ? 0.55 : 0) + (hasDependencies ? 0.2 : 0) + (deterministicOnly ? 0.15 : 0.05)),
@@ -290,19 +290,19 @@ function rpvmStage(context: ControllerContext, branchZero: CandidateAnswer | nul
   const knownRepair = context.reasoningMemory.knownRepairs[0];
   if (trace.status === "FAIL") {
     return {
-      escalateToQwen: false,
+      escalateToMRSModel: false,
       confidence: 0.12,
       detail: "RPVM failed closed because TRACE rejected the proposed transition.",
     };
   }
-  const escalate = !knownRepair && (r1.operation === "ESCALATE_QWEN" || (lowConfidence && job.evidencePolicy.sufficiencyState !== "SUFFICIENT"));
+  const escalate = !knownRepair && (r1.operation === "ESCALATE_MRS_MODEL" || (lowConfidence && job.evidencePolicy.sufficiencyState !== "SUFFICIENT"));
   return {
-    escalateToQwen: escalate,
+    escalateToMRSModel: escalate,
     confidence: escalate ? 0.6 : 0.82,
     detail: escalate
-      ? "RPVM kept MRS behind a low-confidence gate and opened the Qwen residual lane."
+      ? "RPVM kept MRS behind a low-confidence gate and opened the browser MRS model residual lane."
       : knownRepair
-        ? "RPVM selected a known bounded repair/capability path from failure memory instead of escalating to Qwen."
+        ? "RPVM selected a known bounded repair/capability path from failure memory instead of escalating to the browser MRS model."
         : "RPVM kept execution deterministic because confidence remained acceptable without MRS.",
   };
 }
@@ -459,7 +459,7 @@ function proposalToCandidate(proposal: Brain2ResidualReasonerOutput): CandidateA
 
 function buildAcceptanceTrace(stages: MRSStageRecord[], usedMRS: boolean) {
   const trace = ["DATABOX", "BRANCH_ZERO", "CAPABILITY_LOOKUP", "PATTERN_MEMORY", "COGNITIVE_R1", "TRACE_RPVM", "TINY_SPECIALIST"] as string[];
-  if (usedMRS) trace.push("WEBLLM_QWEN");
+  if (usedMRS) trace.push("WEB_MRS_MODEL");
   trace.push("VERIFY");
   if (stages.some((item) => item.name === "REPAIR" && item.status !== "SKIP")) trace.push("REPAIR");
   return trace;
@@ -537,9 +537,9 @@ export async function runExplicitMRSController(snapshot: Brain2Snapshot, questio
       detail: "Tiny Specialist skipped because TRACE failed closed on the proposed transition.",
     });
     stages.push({
-      name: "QWEN",
+      name: "MRS_MODEL",
       status: "SKIP",
-      detail: "Qwen residual lane skipped because TRACE / RPVM rejected the transition before neural escalation.",
+      detail: "Browser MRS model residual lane skipped because TRACE / RPVM rejected the transition before neural escalation.",
     });
   } else if (!candidate || candidate.confidence < 0.84) {
     const tiny = runTinySpecialist(context);
@@ -550,19 +550,19 @@ export async function runExplicitMRSController(snapshot: Brain2Snapshot, questio
       confidence: tiny?.confidence,
       evidenceIds: tiny?.evidenceIds,
     });
-    if (tiny && (!rpvm.escalateToQwen || tiny.confidence >= 0.78)) {
+    if (tiny && (!rpvm.escalateToMRSModel || tiny.confidence >= 0.78)) {
       candidate = tiny;
       terminatedBy = "TINY_SPECIALIST";
       finalConfidence = tiny.confidence;
     } else {
       stages.push({
-        name: "QWEN",
+        name: "MRS_MODEL",
         status: "PASS",
-        detail: "Qwen residual lane activated because deterministic confidence was not yet good enough.",
+        detail: "Browser MRS model residual lane activated because deterministic confidence was not yet good enough.",
         confidence: rpvm.confidence,
       });
       usedMRS = true;
-      const qwenProposal = await runBrain2StructuredResidualReasoner({
+      const mrsModelProposal = await runBrain2StructuredResidualReasoner({
         task: question,
         context: buildResidualContext(context),
         evidence: job.evidence.map((item) => ({
@@ -574,16 +574,16 @@ export async function runExplicitMRSController(snapshot: Brain2Snapshot, questio
         })),
         maxTokens: 176,
       });
-      candidate = proposalToCandidate(qwenProposal);
+      candidate = proposalToCandidate(mrsModelProposal);
       finalConfidence = candidate.confidence;
       stages[stages.length - 1] = {
-        name: "QWEN",
+        name: "MRS_MODEL",
         status: "PASS",
         detail: candidate.terminationReason,
         confidence: candidate.confidence,
         evidenceIds: candidate.evidenceIds,
       };
-      terminatedBy = "QWEN";
+      terminatedBy = "MRS_MODEL";
     }
   } else {
     stages.push({
@@ -592,13 +592,13 @@ export async function runExplicitMRSController(snapshot: Brain2Snapshot, questio
       detail: "Tiny Specialist skipped because Branch Zero already met the confidence gate.",
     });
     stages.push({
-      name: "QWEN",
+      name: "MRS_MODEL",
       status: "SKIP",
-      detail: "Qwen residual lane skipped because deterministic confidence was already high enough.",
+      detail: "Browser MRS model residual lane skipped because deterministic confidence was already high enough.",
     });
   }
 
-  let result = buildResult(job, candidate ?? repairCandidate(context, null, { status: "FAIL", detail: "No candidate answer was produced.", missingEvidenceIds: [], outsideJobEvidenceIds: [] }), usedMRS ? "brain2-qwen-residual" : "brain2-deterministic");
+  let result = buildResult(job, candidate ?? repairCandidate(context, null, { status: "FAIL", detail: "No candidate answer was produced.", missingEvidenceIds: [], outsideJobEvidenceIds: [] }), usedMRS ? "brain2-mrs-model-residual" : "brain2-deterministic");
   let verification = verifyResultAgainstJob(job, result);
   stages.push({
     name: "VERIFIER",
@@ -610,7 +610,7 @@ export async function runExplicitMRSController(snapshot: Brain2Snapshot, questio
 
   if (verification.status !== "PASS") {
     const repaired = repairCandidate(context, candidate, verification);
-    result = buildResult(job, repaired, usedMRS ? "brain2-qwen-repair" : "brain2-deterministic-repair");
+    result = buildResult(job, repaired, usedMRS ? "brain2-mrs-model-repair" : "brain2-deterministic-repair");
     verification = verifyResultAgainstJob(job, result);
     finalConfidence = repaired.confidence;
     stages.push({

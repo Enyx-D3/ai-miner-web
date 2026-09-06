@@ -54,7 +54,7 @@ export default function Brain2Landing() {
               <div className="grid gap-3 p-5 sm:grid-cols-2">
                 {previewCards.map(({title, detail, icon: Icon}) => <div key={title} className="rounded-2xl border bg-[var(--secondary)] p-4"><Icon className="mb-8 size-5 text-[var(--blue)]"/><div className="font-tight text-base font-extrabold">{title}</div><div className="mt-1 text-xs text-muted-foreground">{detail}</div></div>)}
               </div>
-              <div className="border-t px-5 py-4 text-xs leading-5 text-muted-foreground"><b className="text-foreground">No fake runtime state.</b> Qwen/MRS runs locally in-browser through Transformers.js + ONNX Runtime Web/WASM using the q8 model; mobile remains external. P2P mutation sync is implemented with credentialed signaling + WebRTC; production cross-NAT reliability still depends on configured STUN/TURN and real multi-device validation.</div>
+              <div className="border-t px-5 py-4 text-xs leading-5 text-muted-foreground"><b className="text-foreground">No fake runtime state.</b> Granite/MRS runs locally in-browser through Transformers.js + ONNX Runtime Web/WASM using the q4f16 model; mobile remains external. P2P mutation sync is implemented with credentialed signaling + WebRTC; production cross-NAT reliability still depends on configured STUN/TURN and real multi-device validation.</div>
             </CardContent>
           </Card>
         </div>

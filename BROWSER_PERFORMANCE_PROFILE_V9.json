@@ -1,0 +1,45 @@
+{
+  "schema": "B2_V9_BROWSER_PROFILE_V1",
+  "baseUrl": "http://127.0.0.1:3100",
+  "browser": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "hotSetLimits": {
+    "messages": 600,
+    "atoms": 1200
+  },
+  "generatedAt": "2026-08-30T22:34:18.140Z",
+  "scenarios": [
+    {
+      "scenario": "boot_hot_dashboard",
+      "route": "/",
+      "interactiveMs": 1422,
+      "bootMs": 210,
+      "secondaryHydrationMs": 3,
+      "deferredDerivationsMs": null,
+      "longTaskWindows": 0,
+      "maxLongTaskMs": 0,
+      "telemetryCount": 2
+    },
+    {
+      "scenario": "notebooks_cached_intelligence",
+      "route": "/live-notebooks",
+      "interactiveMs": 4442,
+      "bootMs": 125,
+      "secondaryHydrationMs": 7,
+      "deferredDerivationsMs": null,
+      "longTaskWindows": 0,
+      "maxLongTaskMs": 0,
+      "telemetryCount": 2
+    },
+    {
+      "scenario": "boot_with_deferred_derivations",
+      "route": "/operations",
+      "interactiveMs": 2207,
+      "bootMs": 114,
+      "secondaryHydrationMs": 35,
+      "deferredDerivationsMs": 352,
+      "longTaskWindows": 0,
+      "maxLongTaskMs": 0,
+      "telemetryCount": 11
+    }
+  ]
+}

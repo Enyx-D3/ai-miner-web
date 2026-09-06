@@ -15,4 +15,4 @@ const checks=[
  ['live notebook intelligence',ui.includes('Live Intelligence')&&ui.includes('Ideas')&&ui.includes('Changed')],
 ];
 const bad=checks.filter(([,ok])=>!ok);if(bad.length){console.error('FAIL',bad.map(x=>x[0]));process.exit(1)}
-console.log('V9 Intelligence Layer acceptance PASS: deterministic discovery → browser Transformers.js / Qwen ONNX MRS semantic review → deterministic evidence verification; LifeWiki/Live Notebooks consume the projection.');
+console.log('V9 Intelligence Layer acceptance PASS: deterministic discovery → browser Transformers.js / Granite ONNX MRS semantic review → deterministic evidence verification; LifeWiki/Live Notebooks consume the projection.');
