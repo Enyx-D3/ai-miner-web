@@ -3,7 +3,9 @@
 import { useSyncExternalStore } from "react";
 import { atomizeMessage } from "./atomizer";
 import {
+  BRAIN2_DISCOVER_VERSION,
   BRAIN2_SCHEMA_VERSION,
+  BRAIN2_PATTERN_VERSION,
   type NormalizedConversationInput,
 } from "./contracts";
 import { accumulatePattern, buildPatternsFromAggregates, type PatternAggregate } from "./patternEngine";
@@ -65,6 +67,8 @@ const HOT_MESSAGE_LIMIT = 600;
 const HOT_ATOM_LIMIT = 1200;
 const RECENT_EVENT_LIMIT = 800;
 const SEARCH_INDEX_BATCH = 500;
+const CALCULATED_PROJECT_RISK_TICK_VERSION = "B2_CALCULATED_PROJECT_RISK_TICK_V1";
+const CALCULATED_PROJECT_RISK_WAKE_PREFIX = `brain2:auto-project-risk:${CALCULATED_PROJECT_RISK_TICK_VERSION}`;
 const TABLES = [
   "sources","conversations","messages","atoms","truths","projects","ticks","decisions","patterns","experiments","missions","checkpoints","mutations","devices","verifications","transactions","journals","contextVaultRuns","patternTests","portableExpertise","compiledCapabilities","reasoningTrajectories","failureMemories","derivedArtifacts","databoxes","retrievalTelemetry","evidenceBlocks","searchDocs","syncPeers","syncConflicts","meta",
 ] as const;
@@ -739,12 +743,14 @@ async function queueProjectIntelligenceMRS(projectId:string,input:NonNullable<Aw
       });
       const record=buildProjectIntelligenceArtifact({projectId,sourceVersion,projection:refined,phase:refined.mrsRuntime==="CONNECTED"?"refined":"deterministic",createdAt:base.createdAt});
       await putDerivedArtifacts([record]);
+      await syncCalculatedProjectRiskTicks([projectId]).catch((error)=>brain2MRSError("queue.project-risk-ticks.error", { projectId, error: error instanceof Error ? error.message : String(error) }));
       return record;
     }catch(error){
       const message=error instanceof Error?error.message:String(error);
       brain2MRSError("queue.project-refine.error", { projectId, error: message });
       const fallback=buildProjectIntelligenceArtifact({projectId,sourceVersion,projection:{...baseProjection,mrsRuntime:"ERROR"},phase:"error",createdAt:base.createdAt,lastMRSError:message});
       await putDerivedArtifacts([fallback]);
+      await syncCalculatedProjectRiskTicks([projectId]).catch((riskError)=>brain2MRSError("queue.project-risk-ticks.error", { projectId, error: riskError instanceof Error ? riskError.message : String(riskError) }));
       return fallback;
     }finally{
       projectIntelligenceMRSRefreshes.delete(key);
@@ -1094,6 +1100,7 @@ export async function bootBrain2(): Promise<void> {
     const webDevice = await ensureWebDevice(memoryRoot);
     const finalDevices = [...devices.filter((device) => device.id !== webDevice.id), webDevice];
     const searchVersion=await metaGet("searchIndexVersion");
+    const patternVersion=await metaGet("patternVersion");
     const storageCounts:Brain2StorageState={...emptyStorage,totalMessages:await countTable("messages"),totalAtoms:await countTable("atoms"),totalTruths:await countTable("truths"),totalConversations:conversations.length,totalEvidenceBlocks:await countTable("evidenceBlocks"),indexedDocuments:await countTable("searchDocs"),hotMessages:messages.length,hotAtoms:atoms.length,retrievalIndexStatus:"EMPTY",retrievalIndexProgress:0,bootMode:"BOUNDED_HOT_SET"};
     const expectedDocs=storageCounts.totalMessages+storageCounts.totalAtoms+storageCounts.totalTruths;
     storageCounts.retrievalIndexProgress=expectedDocs?Math.min(1,storageCounts.indexedDocuments/expectedDocs):1;
@@ -1115,6 +1122,7 @@ export async function bootBrain2(): Promise<void> {
     if(projectsNeedingCompaction.length)setTimeout(()=>{void putMany("projects",projectsNeedingCompaction);},0);
     rebuildIngestionIndexes();
     if(storageCounts.retrievalIndexStatus!=="READY"&&expectedDocs>0) setTimeout(()=>{void rebuildPersistentSearchIndex();},0);
+    if(patternVersion!==BRAIN2_PATTERN_VERSION&&storageCounts.totalAtoms>0) setTimeout(()=>{scheduleDeferredDerivations({delayMs:500,idleTimeoutMs:6000});},0);
     if (committedJournals.length) queueMicrotask(()=>{ scheduleDeferredDerivations({delayMs:800}); });
     setTimeout(()=>{void hydrateSecondaryBootTables().catch(()=>undefined);},0);
   })().catch((error) => {
@@ -1370,6 +1378,7 @@ export async function finalizeDeferredDerivations(): Promise<void> {
   if(pendingMRSProjectIds.length){
     void requestPendingProjectIntelligenceMRS({idle:false,projectIds:pendingMRSProjectIds,limit:pendingMRSProjectIds.length}).catch((error)=>brain2MRSError("derivations.queue-mrs-after-finalize.error", { error: error instanceof Error ? error.message : String(error) }));
   }
+  await syncCalculatedProjectRiskTicks(projectIds.length?projectIds:undefined);
   await recordResponsivenessTelemetry("derivations.finalize",performanceNow()-startedAt,{
     projectCount:projectIds.length,
     committedJournals:writes.length,
@@ -1731,6 +1740,157 @@ export async function ingestExtensionBatch(captures:ExtensionCapture[]):Promise<
   if(acceptedIds.length)scheduleDerivedPatternsRefresh([...touchedProjectIds]);return{acceptedIds,errors};
 }
 
+type CalculatedProjectRiskTickInput = Pick<TickRecord,"id"|"projectId"|"title"|"detail"|"priority"|"wakeCondition"|"evidenceAtomIds">;
+
+function isCalculatedProjectRiskTick(tick:TickRecord){
+  return tick.wakeCondition?.startsWith(CALCULATED_PROJECT_RISK_WAKE_PREFIX)===true;
+}
+
+function strictTraceFamily(atom:AtomRecord){
+  return atom.ruleTrace?.filter((trace)=>trace.startsWith("strict_truth:")&&!["strict_truth:eligible","strict_truth:residual"].includes(trace)).at(-1)?.replace(/^strict_truth:/,"");
+}
+
+async function calculateProjectRiskTicks(project:ProjectRecord):Promise<CalculatedProjectRiskTickInput[]>{
+  const [truthSummary,atoms]=await Promise.all([loadProjectTruthSummary(project.id),loadProjectAtoms(project.id,500)]);
+  const messageIds=[...new Set(atoms.map((atom)=>atom.messageId))];
+  const messages=await getByIds<MessageRecord>("messages",messageIds);
+  const messageRoleById=new Map(messages.map((message)=>[message.id,normalizeText(message.role).toLowerCase()]));
+  const artifact=getCachedProjectIntelligence(project.id);
+  const projection=parseProjectIntelligence(artifact);
+  const unresolved=projectIntelligencePendingCount(projection);
+  const unresolvedEvidenceIds=[...new Set((projection?.unresolved??[]).flatMap((item)=>item.evidenceIds))].slice(0,12);
+  let humanEligible=0;
+  let humanResidual=0;
+  let assistantBlocked=0;
+  const residualEvidenceIds:string[]=[];
+  for(const atom of atoms){
+    const family=strictTraceFamily(atom);
+    if(!family)continue;
+    const role=messageRoleById.get(atom.messageId);
+    const humanAuthored=role==="user"||role==="human";
+    const eligible=atom.ruleTrace?.includes("strict_truth:eligible")===true;
+    if(!humanAuthored){
+      if(family==="assistant_or_unknown_author")assistantBlocked+=1;
+      continue;
+    }
+    if(eligible)humanEligible+=1;
+    else{
+      humanResidual+=1;
+      if(residualEvidenceIds.length<12)residualEvidenceIds.push(atom.id);
+    }
+  }
+  const risks:Array<Omit<CalculatedProjectRiskTickInput,"id"|"projectId"|"wakeCondition"> & { riskId:string }>=[];
+  const conflictCount=truthSummary.conflicting+truthSummary.pending;
+  if(conflictCount>0){
+    const conflicting=snapshot.truths.filter((truth)=>truth.projectId===project.id&&(truth.status==="CONFLICTING"||truth.status==="PENDING_REVIEW")).flatMap((truth)=>truth.evidenceAtomIds??[truth.atomId]).slice(0,12);
+    risks.push({
+      riskId:"truth-conflict",
+      title:"Resolve conflicting project truth",
+      detail:`${project.name} has ${truthSummary.conflicting} conflicting truth(s) and ${truthSummary.pending} pending truth review item(s). Current Truth may be unsafe until reviewed.`,
+      priority:truthSummary.conflicting?"HIGH":"MEDIUM",
+      evidenceAtomIds:[...new Set(conflicting)],
+    });
+  }
+  if(unresolved>0){
+    risks.push({
+      riskId:"mrs-backlog",
+      title:"Review unresolved project intelligence",
+      detail:`${project.name} has ${unresolved} project intelligence candidate(s) still waiting for MRS or deterministic verification. MRS status: ${projectIntelligenceMRSStatus(project.id,artifact,unresolved)}.`,
+      priority:unresolved>=20?"HIGH":"MEDIUM",
+      evidenceAtomIds:unresolvedEvidenceIds,
+    });
+  }
+  if(humanResidual>=12&&humanResidual>Math.max(8,humanEligible*1.5)){
+    risks.push({
+      riskId:"deterministic-pressure",
+      title:"Check deterministic extraction pressure",
+      detail:`${project.name} has ${humanResidual} human residual atom(s) vs ${humanEligible} human eligible atom(s). Deterministic gate may be missing useful project truth here.`,
+      priority:humanResidual>=40?"HIGH":"MEDIUM",
+      evidenceAtomIds:[...new Set(residualEvidenceIds)],
+    });
+  }
+  if(atoms.length>=25&&truthSummary.currentCount<3&&humanResidual>=8){
+    risks.push({
+      riskId:"thin-current-truth",
+      title:"Current Truth is thin for this project",
+      detail:`${project.name} has ${atoms.length} recent atom(s), but only ${truthSummary.currentCount} current truth(s). Important user decisions or constraints may still be trapped in residual evidence.`,
+      priority:"MEDIUM",
+      evidenceAtomIds:[...new Set(residualEvidenceIds)],
+    });
+  }
+  if(assistantBlocked>=80&&humanEligible===0&&truthSummary.currentCount===0){
+    risks.push({
+      riskId:"assistant-heavy-project",
+      title:"Project has mostly assistant-derived material",
+      detail:`${project.name} has ${assistantBlocked} assistant/unknown strict atom(s) and no human eligible Current Truth. This project may need better source grouping or more user-authored evidence.`,
+      priority:"LOW",
+      evidenceAtomIds:[],
+    });
+  }
+  const out:CalculatedProjectRiskTickInput[]=[];
+  for(const risk of risks){
+    out.push({
+      id:await canonicalId("tick","calculated-project-risk",CALCULATED_PROJECT_RISK_TICK_VERSION,project.id,risk.riskId),
+      projectId:project.id,
+      title:risk.title,
+      detail:risk.detail,
+      priority:risk.priority,
+      wakeCondition:`${CALCULATED_PROJECT_RISK_WAKE_PREFIX}:${risk.riskId}`,
+      evidenceAtomIds:risk.evidenceAtomIds,
+    });
+  }
+  return out;
+}
+
+export async function syncCalculatedProjectRiskTicks(projectIds?:string[]):Promise<TickRecord[]>{
+  await bootBrain2();
+  const targetProjects=(projectIds?.length?snapshot.projects.filter((project)=>projectIds.includes(project.id)):snapshot.projects);
+  if(!targetProjects.length)return [];
+  const targetProjectIds=new Set(targetProjects.map((project)=>project.id));
+  const desired=(await Promise.all(targetProjects.map(calculateProjectRiskTicks))).flat();
+  const desiredById=new Map(desired.map((tick)=>[tick.id,tick]));
+  const existingCalculated=snapshot.ticks.filter((tick)=>isCalculatedProjectRiskTick(tick)&&tick.projectId&&targetProjectIds.has(tick.projectId));
+  const existingById=new Map(existingCalculated.map((tick)=>[tick.id,tick]));
+  const updatedAt=now();
+  const tickWrites:TickRecord[]=[];
+  for(const desiredTick of desired){
+    const existing=existingById.get(desiredTick.id);
+    const next:TickRecord={
+      id:desiredTick.id,
+      projectId:desiredTick.projectId,
+      title:desiredTick.title,
+      detail:desiredTick.detail,
+      priority:desiredTick.priority,
+      status:"OPEN",
+      createdAt:existing?.createdAt??updatedAt,
+      updatedAt:existing&&existing.title===desiredTick.title&&existing.detail===desiredTick.detail&&existing.priority===desiredTick.priority&&existing.status==="OPEN"?existing.updatedAt:updatedAt,
+      wakeCondition:desiredTick.wakeCondition,
+      evidenceAtomIds:desiredTick.evidenceAtomIds,
+    };
+    if(!existing||existing.status!=="OPEN"||existing.title!==next.title||existing.detail!==next.detail||existing.priority!==next.priority||existing.evidenceAtomIds.join("|")!==next.evidenceAtomIds.join("|"))tickWrites.push(next);
+  }
+  for(const existing of existingCalculated){
+    if(desiredById.has(existing.id)||existing.status==="RESOLVED")continue;
+    tickWrites.push({...existing,status:"RESOLVED",resolution:"Auto-resolved: project risk no longer present.",updatedAt});
+  }
+  if(!tickWrites.length)return [];
+  const nextProjectById=new Map<string,ProjectRecord>();
+  for(const project of targetProjects){
+    const openCalculatedIds=tickWrites.filter((tick)=>tick.projectId===project.id&&tick.status==="OPEN").map((tick)=>tick.id);
+    const resolvedCalculatedIds=new Set(tickWrites.filter((tick)=>tick.projectId===project.id&&tick.status==="RESOLVED").map((tick)=>tick.id));
+    const openIds=[...new Set([...project.openTickIds.filter((id)=>!resolvedCalculatedIds.has(id)),...openCalculatedIds])];
+    if(openIds.join("|")!==project.openTickIds.join("|"))nextProjectById.set(project.id,{...project,openTickIds:openIds,updatedAt});
+  }
+  const projectWrites=[...nextProjectById.values()];
+  const mutation=await buildMutation("CALCULATE","projectRiskTicks","calculated-project-risk",deltaPayload("ticks",{ticks:tickWrites,projects:projectWrites}));
+  await atomicPut({ticks:tickWrites,projects:projectWrites,mutations:[mutation]});
+  snapshot.ticks=mergeById(snapshot.ticks,tickWrites);
+  snapshot.projects=mergeById(snapshot.projects,projectWrites);
+  snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);
+  setSnapshot({ticks:snapshot.ticks,projects:snapshot.projects,mutations:snapshot.mutations});
+  return tickWrites;
+}
+
 export async function createTick(input: Pick<TickRecord, "title" | "detail" | "priority"> & { projectId?: string; wakeCondition?: string; evidenceAtomIds?: string[] }): Promise<TickRecord> {
   await bootBrain2(); const createdAt=now(); const id=await canonicalId("tick",input.projectId,input.title,createdAt); const tick:TickRecord={id,projectId:input.projectId,title:input.title,detail:input.detail,priority:input.priority,status:"OPEN",createdAt,updatedAt:createdAt,wakeCondition:input.wakeCondition,evidenceAtomIds:input.evidenceAtomIds??[]};
   const project=tick.projectId?snapshot.projects.find((item)=>item.id===tick.projectId):undefined;
@@ -1744,8 +1904,32 @@ export async function createTick(input: Pick<TickRecord, "title" | "detail" | "p
 
 export async function resolveTick(id:string,resolution:string):Promise<void>{await bootBrain2();const tick=snapshot.ticks.find((item)=>item.id===id);if(!tick)return;const next:TickRecord={...tick,status:"RESOLVED",resolution:normalizeText(resolution),updatedAt:now()};const project=tick.projectId?snapshot.projects.find((item)=>item.id===tick.projectId):undefined;const nextProject=project?{...project,openTickIds:project.openTickIds.filter((tickId)=>tickId!==id),updatedAt:now()}:undefined;const payload=deltaPayload("ticks",{ticks:[next],...(nextProject?{projects:[nextProject]}:{})});const mutation=await buildMutation("RESOLVE","tick",id,payload,tick);await atomicPut({ticks:[next],...(nextProject?{projects:[nextProject]}:{}),mutations:[mutation]});snapshot.ticks=mergeById(snapshot.ticks,[next]);if(nextProject)snapshot.projects=mergeById(snapshot.projects,[nextProject]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({ticks:snapshot.ticks,projects:snapshot.projects,mutations:snapshot.mutations});}
 
-export async function createExperiment(input:{title:string;hypothesis:string;projectId?:string}):Promise<void>{await bootBrain2();const createdAt=now();const id=await canonicalId("exp",input.title,createdAt);const experiment:ExperimentRecord={id,projectId:input.projectId,title:input.title,hypothesis:input.hypothesis,status:"READY",createdAt,updatedAt:createdAt,evidenceAtomIds:[]};const mutation=await buildMutation("CREATE","experiment",id,deltaPayload("experiments",{experiments:[experiment]}));await atomicPut({experiments:[experiment],mutations:[mutation]});snapshot.experiments=mergeById(snapshot.experiments,[experiment]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({experiments:snapshot.experiments,mutations:snapshot.mutations});}
-export async function updateExperiment(id:string,status:ExperimentRecord["status"],result?:string){await bootBrain2();const experiment=snapshot.experiments.find((item)=>item.id===id);if(!experiment)return;const next={...experiment,status,result,updatedAt:now()};const mutation=await buildMutation("UPDATE","experiment",id,deltaPayload("experiments",{experiments:[next]}),experiment);await atomicPut({experiments:[next],mutations:[mutation]});snapshot.experiments=mergeById(snapshot.experiments,[next]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({experiments:snapshot.experiments,mutations:snapshot.mutations});}
+export async function createExperiment(input:{title:string;hypothesis:string;projectId?:string}):Promise<void>{await bootBrain2();const createdAt=now();const id=await canonicalId("exp",input.title,createdAt);const experiment:ExperimentRecord={id,projectId:input.projectId,title:input.title,hypothesis:input.hypothesis,status:"READY",createdAt,updatedAt:createdAt,evidenceAtomIds:[],validationStatus:"UNVALIDATED"};const mutation=await buildMutation("CREATE","experiment",id,deltaPayload("experiments",{experiments:[experiment]}));await atomicPut({experiments:[experiment],mutations:[mutation]});snapshot.experiments=mergeById(snapshot.experiments,[experiment]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({experiments:snapshot.experiments,mutations:snapshot.mutations});}
+
+async function validateExperimentUpdate(experiment:ExperimentRecord,status:ExperimentRecord["status"],result?:string,evidenceAtomIds:string[]=[]){
+  const cleanResult=normalizeText(result??"");
+  const uniqueEvidenceIds=[...new Set(evidenceAtomIds.map((id)=>normalizeText(id)).filter(Boolean))];
+  if(status==="COMPLETED"){
+    if(cleanResult.length<20)throw new Error("Experiment completion needs a real result summary.");
+    if(!uniqueEvidenceIds.length)throw new Error("Experiment completion needs at least one evidence atom.");
+    const atoms=await getByIds<AtomRecord>("atoms",uniqueEvidenceIds);
+    const foundIds=new Set(atoms.map((atom)=>atom.id));
+    const missing=uniqueEvidenceIds.filter((id)=>!foundIds.has(id));
+    if(missing.length)throw new Error(`Experiment evidence atom not found: ${missing[0]}`);
+    const outside=atoms.find((atom)=>experiment.projectId&&atom.projectId!==experiment.projectId);
+    if(outside)throw new Error("Experiment evidence must belong to same project.");
+    const weak=atoms.find((atom)=>atom.confidence<0.6||atom.kind==="question");
+    if(weak)throw new Error("Experiment evidence must be concrete non-question atoms.");
+    return {result:cleanResult,evidenceAtomIds:uniqueEvidenceIds,validationStatus:"PASS" as const,validationDetail:`Validated with ${uniqueEvidenceIds.length} evidence atom(s).`,validatedAt:now()};
+  }
+  if(status==="FAILED"||status==="BLOCKED"){
+    if(cleanResult.length<10)throw new Error("Experiment failure/block needs a short result reason.");
+    return {result:cleanResult,evidenceAtomIds:uniqueEvidenceIds,validationStatus:"PASS" as const,validationDetail:`Operator result recorded for ${status.toLowerCase()} experiment.`,validatedAt:now()};
+  }
+  return {result:cleanResult||undefined,evidenceAtomIds:uniqueEvidenceIds.length?uniqueEvidenceIds:experiment.evidenceAtomIds,validationStatus:"UNVALIDATED" as const,validationDetail:undefined,validatedAt:undefined};
+}
+
+export async function updateExperiment(id:string,status:ExperimentRecord["status"],result?:string,evidenceAtomIds?:string[]){await bootBrain2();const experiment=snapshot.experiments.find((item)=>item.id===id);if(!experiment)return;const validation=await validateExperimentUpdate(experiment,status,result,evidenceAtomIds??experiment.evidenceAtomIds);const next={...experiment,status,result:validation.result,evidenceAtomIds:validation.evidenceAtomIds,validationStatus:validation.validationStatus,validationDetail:validation.validationDetail,validatedAt:validation.validatedAt,updatedAt:now()};const mutation=await buildMutation("UPDATE","experiment",id,deltaPayload("experiments",{experiments:[next]}),experiment);await atomicPut({experiments:[next],mutations:[mutation]});snapshot.experiments=mergeById(snapshot.experiments,[next]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({experiments:snapshot.experiments,mutations:snapshot.mutations});}
 
 export async function createMission(input:{title:string;objective:string;projectId?:string}){await bootBrain2();const createdAt=now();const id=await canonicalId("mission",input.title,createdAt);const mission:MissionRecord={id,projectId:input.projectId,title:input.title,objective:input.objective,status:"READY",createdAt,updatedAt:createdAt,checkpointIds:[],tickIds:[],runtimeCanon:"BRAIN2SHOT_CANONICAL_PRODUCTION_RUNTIME_V2",writerId:localStorage.getItem("brain2-web-device-id")??"web"};const mutation=await buildMutation("CREATE","mission",id,deltaPayload("missions",{missions:[mission]}));await atomicPut({missions:[mission],mutations:[mutation]});snapshot.missions=mergeById(snapshot.missions,[mission]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({missions:snapshot.missions,mutations:snapshot.mutations});}
 
@@ -1755,7 +1939,7 @@ export async function addVerification(entityType:string,entityId:string,status:V
 
 export async function addTransaction(type:B2TransactionRecord["type"],payload:string,projectId?:string){await bootBrain2();const createdAt=now();const payloadHash=await sha256(payload);const prior=[...snapshot.transactions].sort((a,b)=>(b.sequence??0)-(a.sequence??0)||b.createdAt.localeCompare(a.createdAt))[0];const sequence=(prior?.sequence??0)+1;const protocolVersion=2;const hash=await sha256(`${protocolVersion}|${type}|${projectId??""}|${payloadHash}|${prior?.id??""}|${sequence}`);const transaction:B2TransactionRecord={id:`b2tx_${hash.slice(0,24)}`,type,projectId,payload,createdAt,hash,payloadHash,parentId:prior?.id,sequence,protocolVersion};const mutation=await buildMutation("CREATE","transaction",transaction.id,deltaPayload("transactions",{transactions:[transaction]}));await atomicPut({transactions:[transaction],mutations:[mutation]});snapshot.transactions=mergeById(snapshot.transactions,[transaction]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({transactions:snapshot.transactions,mutations:snapshot.mutations});}
 
-export async function refreshDerivedPatterns(){await bootBrain2();const conflicting=await getAllByIndex<TruthRecord>("truths","byStatus","CONFLICTING");const conflictingAtomIds=new Set(conflicting.flatMap((truth)=>truth.evidenceAtomIds??[truth.atomId]));const aggregates=new Map<string,PatternAggregate>();let key:IDBValidKey|undefined;while(true){const page=await pagedPrimaryRead<AtomRecord>("atoms",key,SEARCH_INDEX_BATCH);for(const atom of page.items)accumulatePattern(aggregates,atom,conflictingAtomIds);key=page.lastKey;if(page.items.length<SEARCH_INDEX_BATCH)break;await new Promise((resolve)=>setTimeout(resolve,0));}const patterns=await buildPatternsFromAggregates(aggregates.values(),250,snapshot.patternTests);const db=await openDb();await new Promise<void>((resolve,reject)=>{const tx=db.transaction("patterns","readwrite");const store=tx.objectStore("patterns");store.clear();for(const pattern of patterns)store.put(pattern);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error("Pattern rebuild aborted"));});snapshot.patterns=patterns;invalidateRuntimeIndex();}
+export async function refreshDerivedPatterns(){await bootBrain2();const conflicting=await getAllByIndex<TruthRecord>("truths","byStatus","CONFLICTING");const conflictingAtomIds=new Set(conflicting.flatMap((truth)=>truth.evidenceAtomIds??[truth.atomId]));const aggregates=new Map<string,PatternAggregate>();let key:IDBValidKey|undefined;while(true){const page=await pagedPrimaryRead<AtomRecord>("atoms",key,SEARCH_INDEX_BATCH);for(const atom of page.items)accumulatePattern(aggregates,atom,conflictingAtomIds);key=page.lastKey;if(page.items.length<SEARCH_INDEX_BATCH)break;await new Promise((resolve)=>setTimeout(resolve,0));}const patterns=await buildPatternsFromAggregates(aggregates.values(),250,snapshot.patternTests);const db=await openDb();await new Promise<void>((resolve,reject)=>{const tx=db.transaction(["patterns","meta"],"readwrite");const store=tx.objectStore("patterns");store.clear();for(const pattern of patterns)store.put(pattern);tx.objectStore("meta").put({id:"patternVersion",value:BRAIN2_PATTERN_VERSION});tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error("Pattern rebuild aborted"));});snapshot.patterns=patterns;invalidateRuntimeIndex();}
 
 export async function recordDatabox(databox:DataboxRecord){await bootBrain2();const mutation=await buildMutation("CREATE","databox",databox.id,deltaPayload("databoxes",{databoxes:[databox]}));await atomicPut({databoxes:[databox],mutations:[mutation]});snapshot.databoxes=mergeById(snapshot.databoxes,[databox]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({databoxes:snapshot.databoxes,mutations:snapshot.mutations});}
 
@@ -1802,10 +1986,127 @@ export async function recordControllerLearning(run:{
   return {trajectory,capability,failureMemory:nextFailure};
 }
 
-export function discoverForgottenGold(limit=20){const recentCutoff=Date.now()-45*86400000;const oldCutoff=Date.now()-120*86400000;const recentKeywords=new Set(snapshot.atoms.filter((atom)=>!atom.createdAt||Date.parse(atom.createdAt)>=recentCutoff).flatMap((atom)=>atom.keywords));return snapshot.atoms.filter((atom)=>atom.createdAt&&Date.parse(atom.createdAt)<=oldCutoff&&["idea","decision","constraint","task"].includes(atom.kind)).map((atom)=>({atom,score:atom.keywords.filter((keyword)=>recentKeywords.has(keyword)).length+atom.confidence})).filter((item)=>item.score>=1.7).sort((a,b)=>b.score-a.score).slice(0,limit);}
+const DISCOVER_SAFE_KINDS=new Set<AtomRecord["kind"]>(["idea","decision","constraint","task","fact"]);
+const DISCOVER_BLOCKED_RULES=new Set(["assistant_or_unknown_author","question","code_or_log","labelled_answer","quoted_text","meta_task","chat_task","anaphora","duplicate_claim","transient_observation","observation","speculation","invalid_source","invalid_timestamp","empty_candidate","not_strict_truth"]);
+const DISCOVER_STOP_TERMS=new Set(["brain2","project","thing","things","stuff","work","works","need","needs","make","made","want","user","chatgpt","claude","gemini","assistant","export","import","data","file","page","pages","good","better","best","wrong","right","issue","issues","problem","problems"]);
+
+function discoverStrictRule(atom:AtomRecord){return atom.ruleTrace?.filter((item)=>item.startsWith("strict_truth:")&&!item.endsWith(":eligible")&&!item.endsWith(":residual")).at(-1)?.replace(/^strict_truth:/,"");}
+function discoverStrictEligible(atom:AtomRecord){return atom.ruleTrace?.includes("strict_truth:eligible")===true;}
+function discoverMeaningfulTerms(input:string[]|string|undefined,limit=12){
+  const raw=Array.isArray(input)?input:indexTerms(normalizeText(input??""),48);
+  const out:string[]=[];
+  for(const term of raw.map((item)=>normalizeText(item).toLowerCase()).filter(Boolean)){
+    if(term.length<4||DISCOVER_STOP_TERMS.has(term)||/^\d+$/.test(term)||out.includes(term))continue;
+    out.push(term);
+    if(out.length>=limit)break;
+  }
+  return out;
+}
+function discoverTermsForAtom(atom:AtomRecord){
+  return [...new Set([...discoverMeaningfulTerms(atom.keywords,8),...discoverMeaningfulTerms(atom.canonicalSubject||atom.subject,6),...discoverMeaningfulTerms(atom.value,4),...discoverMeaningfulTerms(atom.text,8)])].slice(0,16);
+}
+function discoverTermsForDoc(doc:PersistentSearchDocument){
+  return [...new Set([...discoverMeaningfulTerms(doc.terms,12),...discoverMeaningfulTerms(doc.text,8)])].slice(0,16);
+}
+function discoverTextLooksJunk(text:string){
+  const clean=normalizeText(text);
+  if(!clean||clean.length<18)return true;
+  if(/^(q|question|answer|assistant|user)\s*[:\-]/i.test(clean))return true;
+  if(/```|<meta-data|<\/?[a-z][^>]*>|https?:\/\/|traceback|typeerror|syntaxerror|\{".{0,80}":/.test(clean))return true;
+  if(clean.split(/\s+/).length<5&&!/\b(decided|decision|must|should|need|requires|required|use|keep|remove|avoid|build|implement|ship|verify|test)\b/i.test(clean))return true;
+  return false;
+}
+function discoverSourceSafe(atom:AtomRecord){
+  const rule=discoverStrictRule(atom);
+  if(rule&&DISCOVER_BLOCKED_RULES.has(rule))return false;
+  if(atom.boundarySignals?.some((signal)=>["code","log","assistant","question"].some((bad)=>signal.toLowerCase().includes(bad))))return false;
+  return true;
+}
+function discoverQualitySafe(atom:AtomRecord){
+  if(!DISCOVER_SAFE_KINDS.has(atom.kind))return false;
+  if(!atom.projectId||!atom.createdAt||Number.isNaN(Date.parse(atom.createdAt)))return false;
+  if(atom.confidence<0.66)return false;
+  if(atom.truthStatus==="SUPERSEDED"||atom.truthStatus==="CONFLICTING")return false;
+  if(!discoverSourceSafe(atom)||discoverTextLooksJunk(atom.text))return false;
+  const terms=discoverTermsForAtom(atom);
+  if(terms.length<2)return false;
+  if(atom.kind==="fact"&&!discoverStrictEligible(atom)&&atom.truthStatus!=="CURRENT")return false;
+  if(atom.kind==="idea"&&!discoverStrictEligible(atom)&&atom.truthStatus!=="CURRENT"&&!atom.relationSafe&&atom.confidence<0.78)return false;
+  return true;
+}
+function scoreDiscoverAtom(atom:AtomRecord,recentTerms:Set<string>,projectRecentTerms?:Set<string>){
+  const terms=discoverTermsForAtom(atom);
+  const overlap=terms.filter((term)=>recentTerms.has(term));
+  const projectOverlap=projectRecentTerms?terms.filter((term)=>projectRecentTerms.has(term)):[];
+  const strongAtom=discoverStrictEligible(atom)||atom.truthStatus==="CURRENT"||atom.kind==="decision"||atom.kind==="constraint";
+  if(overlap.length<2&&!(strongAtom&&projectOverlap.length>=1))return 0;
+  const kindBoost=atom.kind==="decision"?.55:atom.kind==="constraint"?.5:atom.kind==="task"?.25:atom.kind==="idea"?.2:.1;
+  const truthBoost=atom.truthStatus==="CURRENT"?.55:discoverStrictEligible(atom)?.35:0;
+  const projectBoost=Math.min(.8,projectOverlap.length*.25);
+  return overlap.length*.9+projectOverlap.length*.35+atom.confidence+kindBoost+truthBoost+projectBoost;
+}
+
+export function discoverForgottenGold(limit=20){
+  const recentCutoff=Date.now()-45*86400000;
+  const oldCutoff=Date.now()-120*86400000;
+  const recentAtoms=snapshot.atoms.filter((atom)=>!atom.createdAt||Date.parse(atom.createdAt)>=recentCutoff).filter(discoverQualitySafe);
+  const recentTerms=new Set(recentAtoms.flatMap(discoverTermsForAtom));
+  const recentTermsByProject=new Map<string,Set<string>>();
+  for(const atom of recentAtoms){
+    const terms=recentTermsByProject.get(atom.projectId)??new Set<string>();
+    for(const term of discoverTermsForAtom(atom))terms.add(term);
+    recentTermsByProject.set(atom.projectId,terms);
+  }
+  return snapshot.atoms
+    .filter((atom)=>atom.createdAt&&Date.parse(atom.createdAt)<=oldCutoff&&discoverQualitySafe(atom))
+    .map((atom)=>({atom,score:scoreDiscoverAtom(atom,recentTerms,recentTermsByProject.get(atom.projectId))}))
+    .filter((item)=>item.score>=2.7)
+    .sort((a,b)=>b.score-a.score||b.atom.confidence-a.atom.confidence)
+    .slice(0,limit);
+}
 
 async function searchDocsDateRange(range:IDBKeyRange,direction:IDBCursorDirection,limit:number):Promise<PersistentSearchDocument[]>{const db=await openDb();return new Promise((resolve,reject)=>{const out:PersistentSearchDocument[]=[];const tx=db.transaction("searchDocs","readonly");const request=tx.objectStore("searchDocs").index("byCreatedAt").openCursor(range,direction);request.onsuccess=()=>{const cursor=request.result;if(!cursor||out.length>=limit){resolve(out);return;}out.push(cursor.value as PersistentSearchDocument);cursor.continue();};request.onerror=()=>reject(request.error);});}
-export async function discoverForgottenGoldAsync(limit=50){await bootBrain2();const recentIso=new Date(Date.now()-45*86400000).toISOString();const oldIso=new Date(Date.now()-120*86400000).toISOString();try{const recentDocs=await searchDocsDateRange(IDBKeyRange.lowerBound(recentIso),"prev",5000);const recentKeywords=new Set(recentDocs.filter((doc)=>doc.kind==="atom").flatMap((doc)=>doc.terms));const oldDocs=await searchDocsDateRange(IDBKeyRange.upperBound(oldIso),"prev",10000);const candidates=oldDocs.filter((doc)=>doc.kind==="atom"&&doc.atomKind&&["idea","decision","constraint","task"].includes(doc.atomKind)).map((doc)=>({doc,score:doc.terms.filter((term)=>recentKeywords.has(term)).length+(doc.confidence??0)})).filter((item)=>item.score>=1.7).sort((a,b)=>b.score-a.score).slice(0,limit);const atoms=await getByIds<AtomRecord>("atoms",candidates.map((item)=>item.doc.recordId));const byId=new Map(atoms.map((atom)=>[atom.id,atom]));return candidates.map((item)=>({atom:byId.get(item.doc.recordId),score:item.score})).filter((item):item is {atom:AtomRecord;score:number}=>Boolean(item.atom));}catch{return discoverForgottenGold(limit);}}
+export async function discoverForgottenGoldAsync(limit=50){
+  await bootBrain2();
+  const recentIso=new Date(Date.now()-45*86400000).toISOString();
+  const oldIso=new Date(Date.now()-120*86400000).toISOString();
+  try{
+    const recentDocs=await searchDocsDateRange(IDBKeyRange.lowerBound(recentIso),"prev",5000);
+    const recentAtomDocs=recentDocs.filter((doc)=>doc.kind==="atom"&&doc.recordId);
+    const recentAtoms=await getByIds<AtomRecord>("atoms",recentAtomDocs.map((doc)=>doc.recordId));
+    const safeRecentAtoms=recentAtoms.filter(discoverQualitySafe);
+    const recentTerms=new Set(safeRecentAtoms.flatMap(discoverTermsForAtom));
+    const recentTermsByProject=new Map<string,Set<string>>();
+    for(const atom of safeRecentAtoms){
+      const terms=recentTermsByProject.get(atom.projectId)??new Set<string>();
+      for(const term of discoverTermsForAtom(atom))terms.add(term);
+      recentTermsByProject.set(atom.projectId,terms);
+    }
+    const oldDocs=await searchDocsDateRange(IDBKeyRange.upperBound(oldIso),"prev",10000);
+    const preCandidates=oldDocs
+      .filter((doc)=>doc.kind==="atom"&&doc.atomKind&&DISCOVER_SAFE_KINDS.has(doc.atomKind)&&(doc.confidence??0)>=0.62)
+      .map((doc)=>({doc,overlap:discoverTermsForDoc(doc).filter((term)=>recentTerms.has(term)).length}))
+      .filter((item)=>item.overlap>=1)
+      .sort((a,b)=>b.overlap-a.overlap||(b.doc.confidence??0)-(a.doc.confidence??0))
+      .slice(0,Math.max(limit*12,240));
+    const atoms=await getByIds<AtomRecord>("atoms",preCandidates.map((item)=>item.doc.recordId));
+    const byId=new Map(atoms.map((atom)=>[atom.id,atom]));
+    const scored=preCandidates
+      .map((item)=>byId.get(item.doc.recordId))
+      .filter((atom):atom is AtomRecord=>{
+        if(!atom)return false;
+        return discoverQualitySafe(atom);
+      })
+      .map((atom)=>({atom,score:scoreDiscoverAtom(atom,recentTerms,recentTermsByProject.get(atom.projectId))}))
+      .filter((item)=>item.score>=2.7)
+      .sort((a,b)=>b.score-a.score||b.atom.confidence-a.atom.confidence)
+      .slice(0,limit);
+    await metaPut("discoverVersion",BRAIN2_DISCOVER_VERSION).catch(()=>undefined);
+    return scored;
+  }catch{
+    return discoverForgottenGold(limit);
+  }
+}
 
 export function searchBrain2(query:string,mode:"find"|"current"|"history"|"evidence"|"discover"="find"){
   const q=normalizeText(query).toLowerCase();

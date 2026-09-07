@@ -81,7 +81,9 @@ const EXPLICIT_CONFIG_RE = /\b(runtime|model|backend|provider|architecture|schem
 const SHORT_DIRECTIVE_RE = /^(keep|use|switch|replace|remove|add|make|move|stick to|preserve|disable|enable)\b/i;
 const BOUNDED_PROJECT_REQUIREMENT_RE = /\b(model|backend|provider|schema|adapter|engine|cache|worker|mrs|dvi|brain2|life wiki|import|export|truth|deterministic)\b.{0,120}\b(should|must|needs?\s+to|has\s+to|have\s+to|will|auto[-\s]?(?:attach|attached|initialize|run|start)|fire[-\s]and[-\s]forget)\b|\b(should|must|needs?\s+to|has\s+to|have\s+to|will)\b.{0,120}\b(model|backend|provider|schema|adapter|engine|cache|worker|mrs|dvi|brain2|life wiki|import|export|truth|deterministic)\b/i;
 const DETERMINISTIC_PRIORITY_RE = /\b(deterministic|current truth|truth extraction|truth engine|dvi|brain2)\b.{0,80}\b(first|priority|before mrs|without mrs|reduce mrs|less mrs|quality)\b|\b(first|priority)\b.{0,80}\b(deterministic|current truth|truth extraction|truth engine|dvi|brain2)\b/i;
+const DETERMINISTIC_MRS_BALANCE_RE = /\b(deterministic|current truth|truth extraction|truth engine|dvi)\b.{0,120}\b(ratio|more than mrs|less mrs|mrs dependency|pressure|middle ground|not too broad|not too narrow)\b|\b(mrs dependency|mrs pressure|middle ground|not too broad|not too narrow)\b.{0,120}\b(deterministic|current truth|truth extraction|truth engine|dvi)\b/i;
 const ARCHITECTURE_DECISION_RE = /\b(architecture|runtime path|product path|web app|browser|worker|model page|mrs)\b.{0,120}\b(should|must|stays?|keep|remove|use|uses|replace|replacing|switch|moved|changed|auto[-\s]?(?:attach|attached|initialize|run|start))\b/i;
+const CONFIRMED_PROJECT_ISSUE_RE = /\b(deterministic|current truth|truth extraction|truth engine|dvi|mrs|life wiki|model|runtime|worker|import|export|upload|download|cache)\b.{0,140}\b(bad|weak|wrong|freeze|freezes|freezing|unresponsive|slow|reloads?|loads?\s+again|pending|not update|not updating|not working|failing|fails|too much|too broad|too narrow)\b|\b(bad|weak|wrong|freeze|freezes|freezing|unresponsive|slow|reloads?|loads?\s+again|pending|not update|not updating|not working|failing|fails|too much|too broad|too narrow)\b.{0,140}\b(deterministic|current truth|truth extraction|truth engine|dvi|mrs|life wiki|model|runtime|worker|import|export|upload|download|cache)\b/i;
 const PROJECT_ANCHOR_RE = /\b(app|web app|brain2|mrs|dvi|truth|engine|architecture|model|runtime|worker|life wiki|import|export|provider|adapter|chatgpt|claude|gemini)\b/i;
 const QA_PAIR_RE = /Q:\s*(.*?)\s*A:\s*(.*?)(?=\s+Q:|$)/gis;
 const QA_EPHEMERAL_RE = /\b(want to start|want to proceed|how do you want to proceed|what to build first|can you share|can you run|ever load successfully|explore|more detail|visuali[sz]ed|where do you want to start)\b/i;
@@ -422,6 +424,9 @@ export function evaluateStrictCurrentTruthCandidate(
   if (CODE_OR_LOG_RE.test(text)) return reject("code/log text is residual evidence, not Current Truth", "code_or_log");
   if (QUESTION_RE.test(text)) return reject("questions do not become Current Truth", "question");
   if (SPECULATIVE_RE.test(text)) return reject("speculative language is not strict truth", "speculation");
+  if (CONFIRMED_PROJECT_ISSUE_RE.test(text) && hasProjectAnchor(candidate)) {
+    return { eligible: true, tier: "D1", ruleFamily: "confirmed_project_issue", reason: "human-authored concrete project issue", atomType: "PROJECT_FACT", truthKind: "fact" };
+  }
   if (OBSERVATION_RE.test(text) && !EXPLICIT_CONFIG_RE.test(text)) return reject("observation/status requires later-state clearance before promotion", "observation");
   if (IMPLEMENTATION_CLAIM_RE.test(text) && !hasStrictDerivedRule(candidate, "corroborated_exact_config")) return reject("implementation/status assertion needs independent confirmation", "state_assertion");
   if (TRANSIENT_UI_RE.test(text) && !EXPLICIT_CONFIG_RE.test(text)) return reject("transient UI/runtime complaint is residual evidence", "transient_observation");
@@ -451,6 +456,9 @@ export function evaluateStrictCurrentTruthCandidate(
   }
   if (DETERMINISTIC_PRIORITY_RE.test(text) && hasProjectAnchor(candidate)) {
     return { eligible: true, tier: "D1", ruleFamily: "deterministic_priority_decision", reason: "human-authored deterministic-first priority decision", atomType: "REQUIREMENT", truthKind: "decision" };
+  }
+  if (DETERMINISTIC_MRS_BALANCE_RE.test(text) && hasProjectAnchor(candidate)) {
+    return { eligible: true, tier: "D1", ruleFamily: "deterministic_mrs_balance_decision", reason: "human-authored deterministic/MRS balance decision", atomType: "REQUIREMENT", truthKind: "decision" };
   }
   if (ARCHITECTURE_DECISION_RE.test(text) && hasProjectAnchor(candidate)) {
     return { eligible: true, tier: "D1", ruleFamily: "explicit_architecture_decision", reason: "human-authored bounded architecture decision", atomType: "REQUIREMENT", truthKind: "decision" };

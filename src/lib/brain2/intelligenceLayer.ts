@@ -4,7 +4,7 @@ import type { AtomRecord, DecisionRecord, ExperimentRecord, PatternRecord, Proje
 import { BRAIN2_MRS_REVIEW_CANDIDATE_LIMIT, getBrain2RuntimeAvailabilityHint, reviewBrain2Intelligence } from './transformersRuntime';
 
 export const BRAIN2_INTELLIGENCE_VERSION = 'B2_INTELLIGENCE_V1';
-const BRAIN2_PROJECT_INTELLIGENCE_RULE_VERSION = 'B2_PROJECT_INTELLIGENCE_SOFT_GATE_V3';
+const BRAIN2_PROJECT_INTELLIGENCE_RULE_VERSION = 'B2_PROJECT_INTELLIGENCE_SOFT_GATE_V4';
 
 export type IntelligenceKind = 'TRUTH'|'IMPORTANT_IDEA'|'NOVELTY'|'CONNECTION'|'CHANGE'|'OPEN_QUESTION';
 export type IntelligenceVerification = 'DETERMINISTIC_VERIFIED'|'MRS_VERIFIED'|'MRS_PENDING'|'REJECTED';
@@ -139,14 +139,18 @@ function hasProjectDirectiveShape(value:string){
   return /\b(i|we)\s+(want|need|prefer|must|should)\b/i.test(text)
     || /\b(should|must|needs?\s+to|has\s+to|have\s+to|do not|don't|dont|never|without manual|no manual|keep|use|switch|replace|remove|make|move|stay|stick to|preserve|protect|disable|enable)\b/i.test(text);
 }
+function hasDurableProjectSignal(atom:AtomRecord){
+  const text=normalizeForPromotion(`${atom.subject??""} ${atom.canonicalSubject??""} ${atom.value??""} ${atom.scope??""} ${(atom.keywords??[]).join(" ")} ${atom.text}`).toLowerCase();
+  return /\b(app|webapp|web app|product|project|architecture|runtime|model|backend|provider|adapter|engine|cache|worker|browser|wasm|webgpu|transformers?|mrs|dvi|brain2|life wiki|current truth|truth extraction|deterministic|import|export|ui|page|screen|responsiveness|performance|freeze|storage|database|indexeddb|json|console|automatic|auto|session)\b/i.test(text);
+}
 function deterministicProjectIdea(atom:AtomRecord){
   if(assistantBlocked(atom))return false;
   if(!promotableAtom(atom))return false;
   const rule=strictTruthRule(atom);
   if(rule&&DETERMINISTIC_PROJECT_IDEA_RULES.has(rule))return true;
   if(strictTruthEligible(atom)&&["decision","constraint","fact"].includes(atom.kind))return true;
-  if(atom.kind==="idea"&&hasProjectDirectiveShape(atom.text))return true;
-  if(atom.ruleTrace?.includes("strict_truth:residual")&&["decision","constraint"].includes(atom.kind)&&hasProjectDirectiveShape(atom.text)&&hasGroundedTruthShape(atom.text,atom,0))return true;
+  if(atom.kind==="idea"&&hasProjectDirectiveShape(atom.text)&&hasDurableProjectSignal(atom))return true;
+  if(atom.ruleTrace?.includes("strict_truth:residual")&&["decision","constraint"].includes(atom.kind)&&hasProjectDirectiveShape(atom.text)&&hasDurableProjectSignal(atom)&&hasGroundedTruthShape(atom.text,atom,0))return true;
   return false;
 }
 function mrsReviewableProjectIdea(atom:AtomRecord,importance:number){
@@ -154,9 +158,9 @@ function mrsReviewableProjectIdea(atom:AtomRecord,importance:number){
   const rule=strictTruthRule(atom);
   if(rule&&MRS_BLOCKED_RULES.has(rule))return false;
   if(deterministicProjectIdea(atom))return false;
-  if(["decision","constraint"].includes(atom.kind)&&hasProjectDirectiveShape(atom.text))return true;
-  if(atom.kind==="idea"&&importance>=.68&&hasGroundedTruthShape(atom.text,atom,0))return true;
-  if(atom.kind==="fact"&&importance>=.72&&hasGroundedTruthShape(atom.text,atom,1)&&!isOperationallyThinFact(atom))return true;
+  if(["decision","constraint"].includes(atom.kind)&&hasProjectDirectiveShape(atom.text)&&hasDurableProjectSignal(atom))return true;
+  if(atom.kind==="idea"&&importance>=.7&&hasDurableProjectSignal(atom)&&hasGroundedTruthShape(atom.text,atom,0))return true;
+  if(atom.kind==="fact"&&importance>=.74&&hasDurableProjectSignal(atom)&&hasGroundedTruthShape(atom.text,atom,1)&&!isOperationallyThinFact(atom))return true;
   return false;
 }
 function promotableAtom(atom:AtomRecord){

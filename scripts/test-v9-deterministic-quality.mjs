@@ -22,6 +22,8 @@ const sourceFiles = [
   "canonicalTruth.ts",
   "truthEngine.ts",
   "projectResolver.ts",
+  "patternLab.ts",
+  "patternEngine.ts",
   "intelligenceLayer.ts",
 ];
 
@@ -68,6 +70,8 @@ execFileSync(
     path.join(srcOut, "canonicalTruth.ts"),
     path.join(srcOut, "truthEngine.ts"),
     path.join(srcOut, "projectResolver.ts"),
+    path.join(srcOut, "patternLab.ts"),
+    path.join(srcOut, "patternEngine.ts"),
     path.join(srcOut, "intelligenceLayer.ts"),
     path.join(srcOut, "mrsDebug.ts"),
     path.join(srcOut, "transformersRuntimeStub.ts"),
@@ -80,6 +84,7 @@ const { atomizeMessage } = require(path.join(out, "atomizer.js"));
 const { buildCurrentTruthRoot, buildSourceEvidenceRoot, createStrictCurrentTruthContext, deriveStrictCurrentTruthCandidates, evaluateStrictCurrentTruthCandidate, noteStrictAssistantMessage, toCanonicalTruthMessages } = require(path.join(out, "canonicalTruth.js"));
 const { reconcileAtomToTruth } = require(path.join(out, "truthEngine.js"));
 const { fingerprintConversation, chooseProject } = require(path.join(out, "projectResolver.js"));
+const { buildPatterns } = require(path.join(out, "patternEngine.js"));
 const { buildDeterministicProjectIntelligence } = require(path.join(out, "intelligenceLayer.js"));
 
 function ok(value, message) {
@@ -402,6 +407,12 @@ const widenedStrictCases = [
   ["Deterministic truth extraction quality comes first before MRS.", "deterministic_priority_decision", "decision"],
   ["The web app architecture should keep browser MRS automatic.", "explicit_architecture_decision", "decision"],
   ["The runtime path must stay web-app only.", "explicit_architecture_decision", "decision"],
+  ["deterministic results are bad", "confirmed_project_issue", "fact"],
+  ["calculations plus MRS causing freeze UI", "confirmed_project_issue", "fact"],
+  ["every time I refresh or go to new page the model loads again", "confirmed_project_issue", "fact"],
+  ["all verification of MRS should be queued immediately after data upload", "explicit_architecture_decision", "decision"],
+  ["deterministic ratio should be way more than MRS to reduce MRS dependency", "deterministic_priority_decision", "decision"],
+  ["the deterministic gate is too broad now and needs middle ground", "confirmed_project_issue", "fact"],
 ];
 
 for (const [text, expectedRule, expectedKind] of widenedStrictCases) {
@@ -414,6 +425,25 @@ for (const [text, expectedRule, expectedKind] of widenedStrictCases) {
   ok(decision.eligible, `${text} should now pass the strict deterministic gate`);
   equal(decision.ruleFamily, expectedRule, `${text} should use ${expectedRule}`);
   equal(decision.truthKind, expectedKind, `${text} should normalize to ${expectedKind}`);
+}
+
+const stillResidualMiddleGroundCases = [
+  ["The page is not working and shows errors.", "observation"],
+  ["given a lot of time, not update", "not_strict_truth"],
+  ["i am kinda confused what is going on", "not_strict_truth"],
+  ["what the fuck is going on", "question"],
+  ["Download the React DevTools for a better development experience", "not_strict_truth"],
+];
+
+for (const [text, expectedRule] of stillResidualMiddleGroundCases) {
+  const decision = strictDecisionForText(text, {
+    kind: "statement",
+    subject: "Brain2 diagnostics",
+    canonicalSubject: "brain2 diagnostics",
+    keywords: ["brain2", "diagnostics"],
+  });
+  ok(!decision.eligible, `${text} should stay residual after middle-ground tuning`);
+  equal(decision.ruleFamily, expectedRule, `${text} should use ${expectedRule}`);
 }
 
 const providerStyleFixtures = {
@@ -1098,6 +1128,29 @@ ok(
   "generic low-signal chat should not collapse into an unrelated existing project",
 );
 
+const assistantOnlyRuntimeConversation = fingerprintConversation({
+  title: "New chat",
+  messages: [
+    { role: "assistant", text: "Brain2 Runtime Ops Transformers.js responsiveness import pipeline architecture." },
+  ],
+});
+ok(
+  !chooseProject(assistantOnlyRuntimeConversation, [bitcoinProject, renamedRuntimeProject, splitImportProject]).project,
+  "assistant-only project hints should not merge a conversation into an existing project",
+);
+
+const vagueProjectUpdateConversation = fingerprintConversation({
+  title: "Project update",
+  messages: [
+    { role: "user", text: "The page has some issues and needs better data." },
+    { role: "assistant", text: "We can inspect project runtime or import details." },
+  ],
+});
+ok(
+  !chooseProject(vagueProjectUpdateConversation, [bitcoinProject, renamedRuntimeProject, splitImportProject]).project,
+  "vague generic project words should not merge into a specific project",
+);
+
 const renamedConversation = fingerprintConversation({
   title: "Runtime responsiveness follow-up",
   messages: [
@@ -1109,6 +1162,18 @@ equal(
   chooseProject(renamedConversation, [bitcoinProject, renamedRuntimeProject, splitImportProject]).project?.id,
   renamedRuntimeProject.id,
   "renamed project should still resolve from alias/entity continuity",
+);
+
+const exactAliasConversation = fingerprintConversation({
+  title: "New chat",
+  messages: [
+    { role: "user", text: "Archive Import should keep ZIP restore evidence and ingestion throughput separate from runtime work." },
+  ],
+});
+equal(
+  chooseProject(exactAliasConversation, [renamedRuntimeProject, splitImportProject]).project?.id,
+  splitImportProject.id,
+  "exact project alias in human text should preserve project lineage",
 );
 
 const splitConversation = fingerprintConversation({
@@ -1492,6 +1557,118 @@ ok(
   evidenceRootA !== evidenceRootB,
   "Source evidence root should change when message provenance changes",
 );
+
+const noisyPatterns = await buildPatterns(
+  [
+    ...Array.from({ length: 6 }, (_, index) =>
+      atomFixture({
+        id: `noise-assistant-${index}`,
+        kind: "idea",
+        text: "That said, this underlying idea is legitimate and worth taking seriously.",
+        canonicalSubject: "underlying idea",
+        subject: "Underlying idea",
+        keywords: ["underlying", "idea", "legitimate"],
+        confidence: 0.94,
+        projectId: `project-${index % 2}`,
+        truthStatus: "UNKNOWN",
+        ruleTrace: ["strict_truth:assistant_or_unknown_author", "strict_truth:residual"],
+      }),
+    ),
+    ...Array.from({ length: 5 }, (_, index) =>
+      atomFixture({
+        id: `noise-treated-${index}`,
+        kind: "constraint",
+        text: "Constraint: Adversarial against concrete design least must must be treated as 3.",
+        canonicalSubject: "adversarial concrete design",
+        subject: "Adversarial concrete design",
+        keywords: ["adversarial", "concrete", "design"],
+        confidence: 0.91,
+        projectId: "single-project",
+      }),
+    ),
+    ...Array.from({ length: 5 }, (_, index) =>
+      atomFixture({
+        id: `noise-code-${index}`,
+        kind: "fact",
+        text: "import { motion } from \"framer-motion\"",
+        canonicalSubject: "motion import",
+        subject: "Motion import",
+        keywords: ["motion", "import"],
+        confidence: 0.9,
+        projectId: "single-project",
+      }),
+    ),
+    ...Array.from({ length: 6 }, (_, index) =>
+      atomFixture({
+        id: `noise-one-term-${index}`,
+        kind: "fact",
+        text: "Runtime keeps changing during reload.",
+        canonicalSubject: "runtime",
+        subject: "Runtime",
+        value: undefined,
+        keywords: ["runtime"],
+        confidence: 0.9,
+        projectId: `project-${index % 2}`,
+      }),
+    ),
+    ...Array.from({ length: 6 }, (_, index) =>
+      atomFixture({
+        id: `noise-weak-two-term-${index}`,
+        kind: "idea",
+        text: "Model cache seems interesting.",
+        canonicalSubject: "model cache",
+        subject: "Model cache",
+        value: undefined,
+        keywords: ["model", "cache"],
+        confidence: 0.9,
+        projectId: `project-${index % 2}`,
+        truthStatus: "UNKNOWN",
+      }),
+    ),
+  ],
+  [],
+);
+equal(noisyPatterns.length, 0, "pattern engine should not build patterns from assistant/code/malformed/weak-term atom noise");
+
+const cleanPatterns = await buildPatterns(
+  Array.from({ length: 8 }, (_, index) =>
+    atomFixture({
+      id: `clean-pattern-${index}`,
+      kind: "decision",
+      text: "Browser runtime should keep deterministic work off the immediate UI path.",
+      canonicalSubject: "browser runtime deterministic work",
+      subject: "Browser runtime deterministic work",
+      keywords: ["browser", "runtime", "deterministic", "ui"],
+      confidence: 0.9,
+      projectId: `project-${index % 2}`,
+      truthStatus: "CURRENT",
+      ruleTrace: ["strict_truth:bounded_project_requirement", "strict_truth:eligible"],
+      relationSafe: true,
+    }),
+  ),
+  [],
+);
+ok(cleanPatterns.some((pattern) => /browser runtime deterministic work/i.test(pattern.label)), "pattern engine missed clean repeated project/runtime evidence");
+
+const strongTwoTermPattern = await buildPatterns(
+  Array.from({ length: 6 }, (_, index) =>
+    atomFixture({
+      id: `strong-two-term-${index}`,
+      kind: "constraint",
+      text: "Model cache must persist for the whole browser session.",
+      canonicalSubject: "model cache",
+      subject: "Model cache",
+      value: "persist for browser session",
+      keywords: ["model", "cache", "session"],
+      confidence: 0.9,
+      projectId: `project-${index % 2}`,
+      truthStatus: "CURRENT",
+      ruleTrace: ["strict_truth:bounded_project_requirement", "strict_truth:eligible"],
+    }),
+  ),
+  [],
+);
+ok(strongTwoTermPattern.some((pattern) => /model cache/i.test(pattern.label)), "pattern engine should allow strong structured two-term subjects");
 
 console.log("V9 deterministic quality regressions PASS");
 fs.rmSync(srcOut, { recursive: true, force: true });

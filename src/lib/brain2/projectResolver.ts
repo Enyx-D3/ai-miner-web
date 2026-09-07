@@ -3,6 +3,7 @@ import type { ProjectRecord } from "./types";
 import { jaccard, keywords, normalizeText, slugify, tokenOverlap } from "./identity";
 
 const GENERIC_TITLES = /^(new chat|chat|conversation|untitled(?: conversation| project)?|claude conversation \d+|gemini conversation \d+|conversation \d+)$/i;
+const PROJECT_STOP_TERMS = new Set(["project","work","works","working","thing","things","stuff","issue","issues","problem","problems","update","follow","follow-up","help","page","data","file","chat","conversation","assistant","user","need","needs","want","make","made","good","better","right","wrong"]);
 
 export type ProjectFingerprint = {
   titleTerms: string[];
@@ -12,11 +13,26 @@ export type ProjectFingerprint = {
   genericTitle: boolean;
 };
 
+function cleanProjectTerms(terms: string[]): string[] {
+  return [...new Set(terms.map((term)=>normalizeText(term).toLowerCase()).filter((term)=>term.length>=4&&!PROJECT_STOP_TERMS.has(term)&&!/^\d+$/.test(term)))];
+}
+
+function phrasePresent(haystack: string, phrase: string): boolean {
+  const cleanPhrase=normalizeText(phrase).toLowerCase();
+  if(cleanPhrase.length<4)return false;
+  return normalizeText(haystack).toLowerCase().includes(cleanPhrase);
+}
+
+function roleIsHuman(role: string): boolean {
+  const normalized=normalizeText(role).toLowerCase();
+  return normalized==="user"||normalized==="human";
+}
+
 function projectTerms(project: ProjectRecord): string[] {
   const aliasTerms = (project.aliases ?? []).flatMap((alias) => keywords(alias, 8));
   const summaryTerms = keywords(project.summary ?? "", 12);
   const entityKeywordTerms = (project.entityTerms ?? []).flatMap((entity) => keywords(entity, 4));
-  return [...new Set([...(project.tags ?? []), ...entityKeywordTerms, ...aliasTerms, ...summaryTerms, ...keywords(project.name, 8)])];
+  return cleanProjectTerms([...(project.tags ?? []), ...entityKeywordTerms, ...aliasTerms, ...summaryTerms, ...keywords(project.name, 8)]);
 }
 
 function titleIsGeneric(title: string): boolean {
@@ -31,6 +47,9 @@ function extractEntities(text: string): string[] {
   for (const match of matches) {
     const normalized = normalizeText(match).toLowerCase();
     if (normalized.length < 4) continue;
+    const terms=cleanProjectTerms(keywords(normalized, 8));
+    if(!terms.length)continue;
+    if(terms.length===1&&/^[a-z]+$/.test(terms[0])&&!/[0-9.+#-]/.test(normalized))continue;
     counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
   }
   return [...counts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0])).slice(0, 16).map(([value])=>value);
@@ -38,19 +57,25 @@ function extractEntities(text: string): string[] {
 
 export function fingerprintConversation(input: Pick<NormalizedConversationInput, "title" | "messages">): ProjectFingerprint {
   const genericTitle = titleIsGeneric(input.title);
-  const titleTerms = genericTitle ? [] : keywords(input.title, 12);
-  const userText = input.messages.filter((message) => message.role === "user").map((message) => message.text).join("\n");
-  const allText = input.messages.map((message) => message.text).join("\n");
-  const contentTerms = keywords(`${userText}\n${allText}`, 28);
-  const entityTerms = extractEntities(`${input.title}\n${allText}`);
-  const allTerms = [...new Set([...titleTerms, ...contentTerms, ...entityTerms.flatMap((entity) => keywords(entity, 4))])];
+  const titleTerms = genericTitle ? [] : cleanProjectTerms(keywords(input.title, 12));
+  const userText = input.messages.filter((message) => roleIsHuman(message.role)).map((message) => message.text).join("\n");
+  const contentTerms = cleanProjectTerms(keywords(userText, 32));
+  const entityTerms = extractEntities(`${input.title}\n${userText}`);
+  const allTerms = cleanProjectTerms([...titleTerms, ...contentTerms, ...entityTerms.flatMap((entity) => keywords(entity, 4))]);
   return { titleTerms, contentTerms, entityTerms, allTerms, genericTitle };
 }
 
 export function scoreProject(fingerprint: ProjectFingerprint, project: ProjectRecord): number {
   const terms = projectTerms(project);
-  const aliasTerms = (project.aliases ?? []).flatMap((alias) => keywords(alias, 8));
+  const aliasTerms = cleanProjectTerms((project.aliases ?? []).flatMap((alias) => keywords(alias, 8)));
   const normalizedAllTerms = new Set(fingerprint.allTerms.map((term) => normalizeText(term).toLowerCase()));
+  const humanSignalText = [fingerprint.titleTerms.join(" "), fingerprint.contentTerms.join(" "), fingerprint.entityTerms.join(" ")].join(" ");
+  const phraseMatch = Math.max(
+    ...(project.aliases ?? []).map((alias) => phrasePresent(humanSignalText, alias) ? 1 : 0),
+    ...(project.entityTerms ?? []).map((entity) => phrasePresent(humanSignalText, entity) ? 1 : 0),
+    phrasePresent(humanSignalText, project.name) ? 1 : 0,
+    0,
+  );
   const exactAliasOrEntity = Math.max(
     ...(project.aliases ?? []).map((alias) => normalizedAllTerms.has(normalizeText(alias).toLowerCase()) ? 1 : 0),
     ...(project.entityTerms ?? []).map((entity) => normalizedAllTerms.has(normalizeText(entity).toLowerCase()) ? 1 : 0),
@@ -65,7 +90,7 @@ export function scoreProject(fingerprint: ProjectFingerprint, project: ProjectRe
     tokenOverlap(fingerprint.contentTerms.slice(0, 12), aliasTerms),
   );
   const evidence = Math.max(contentScore, tokenOverlap(fingerprint.contentTerms.slice(0, 12), terms));
-  const score = (fingerprint.genericTitle ? 0 : titleScore * 0.2) + evidence * 0.46 + entityScore * 0.18 + aliasScore * 0.08 + exactAliasOrEntity * 0.12;
+  const score = (fingerprint.genericTitle ? 0 : titleScore * 0.18) + evidence * 0.42 + entityScore * 0.16 + aliasScore * 0.08 + exactAliasOrEntity * 0.08 + phraseMatch * 0.24;
   return Math.max(0, Math.min(1, score));
 }
 
@@ -74,14 +99,16 @@ export function chooseProject(fingerprint: ProjectFingerprint, projects: Project
   const best = ranked[0];
   if (!best) return { score: 0 };
   // Generic titles should prefer strong relative content evidence without collapsing low-signal chats.
+  const bestTerms = new Set(projectTerms(best.project));
+  const overlap = fingerprint.contentTerms.filter((term) => bestTerms.has(term)).length;
+  const phraseScore = scoreProject({ ...fingerprint, contentTerms: fingerprint.contentTerms, allTerms: fingerprint.allTerms }, best.project);
   if (fingerprint.genericTitle) {
     const runnerUp = ranked[1];
-    const overlap = fingerprint.contentTerms.filter((term) => new Set(projectTerms(best.project)).has(term)).length;
-    const clearLead = !runnerUp || best.score >= runnerUp.score + 0.08;
-    if (best.score >= 0.14 && overlap >= 3 && clearLead) return best;
+    const clearLead = !runnerUp || best.score >= runnerUp.score + 0.1;
+    if (best.score >= 0.22 && overlap >= 3 && clearLead) return best;
     return { score: best.score };
   }
-  const threshold = 0.34;
+  const threshold = overlap>=2||phraseScore>=0.46 ? 0.34 : 0.4;
   return best.score >= threshold ? best : { score: best.score };
 }
 
