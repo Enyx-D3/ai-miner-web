@@ -22,6 +22,7 @@ import { reconcileAtomToTruth } from "./truthEngine";
 import { canonicalId, canonicalMessageId, indexTerms, keywords, normalizeText, sha256, wordCount } from "./identity";
 import { BRAIN2_SYNC_PROTOCOL_VERSION, canonicalJson, hashEntity, hashMutation, hashPayload, packBootstrapRecords, verifyMutationEnvelope } from "./syncProtocol";
 import { runASIFReaderQuery } from "./asifReaderCore";
+import { getBrain2BrowserRuntimeIfAvailable, type Brain2RuntimeSearchItem } from "./browserRuntime";
 import type {
   AtomRecord,
   B2TransactionRecord,
@@ -797,6 +798,23 @@ async function persistentSearch<K extends "message"|"atom"|"truth">(kind:K,query
     docsForTerm:async(k:"message"|"atom"|"truth",term:string,docLimit:number,pid?:string)=>{const hits=await getAllByIndex<PersistentSearchDocument>("searchDocs","byTerm",term,Math.max(docLimit*2,64));return hits.filter((doc)=>doc.kind===k&&(!pid||doc.projectId===pid)).slice(0,docLimit);},
     hydrate:async(k:"message"|"atom"|"truth",ids:string[])=>{const table=k==="message"?"messages":k==="atom"?"atoms":"truths";return await getByIds<MessageRecord|AtomRecord|TruthRecord>(table,ids);},
   };
+  const q=normalizeText(query);
+  const runtime=await getBrain2BrowserRuntimeIfAvailable();
+  if(runtime&&q){
+    const docsById=new Map<string,PersistentSearchDocument>();
+    for(const term of indexTerms(q,12)){
+      const docs=await adapter.docsForTerm(kind,term,Math.max(limit*8,128),projectId);
+      for(const doc of docs)docsById.set(doc.id,doc);
+      if(docsById.size>=Math.max(limit*16,256))break;
+    }
+    const candidates=[...docsById.values()];
+    if(candidates.length){
+      const ranked=await runtime.searchDocuments(q,candidates.map((doc)=>({...doc,id:doc.id,text:doc.text,kind:doc.kind}) satisfies Brain2RuntimeSearchItem & PersistentSearchDocument),limit);
+      const records=await adapter.hydrate(kind,ranked.map((doc)=>doc.recordId));
+      const byId=new Map(records.map((record)=>[record.id,record]));
+      return ranked.map((doc)=>byId.get(doc.recordId)).filter((record):record is K extends "message"?MessageRecord:K extends "atom"?AtomRecord:TruthRecord=>Boolean(record)) as never;
+    }
+  }
   const result=await runASIFReaderQuery(adapter,kind,query,limit,projectId);
   return result.records as never;
 }
@@ -1077,6 +1095,7 @@ export async function bootBrain2(): Promise<void> {
       await metaPut("memoryRoot", memoryRoot);
     }
     configurePersistentRetrieval(persistentSearch,evidenceExists);
+    void getBrain2BrowserRuntimeIfAvailable();
     const [
       sources, conversations, messages, atoms, currentTruths, conflictingTruths, pendingTruths, recentTruths,
       projects, ticks, recentMutations, devices, recentTransactions, committedJournals, failedJournals, recentJournals,
