@@ -6,7 +6,7 @@
   "private": true,
   "main": "desktop/electron/main.cjs",
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "next dev --webpack -H 0.0.0.0",
     "dev:turbopack": "next dev",
     "build": "next build",
     "start": "next start",
