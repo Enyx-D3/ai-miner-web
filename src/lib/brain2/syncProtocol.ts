@@ -47,6 +47,57 @@ export async function hashMutationManifest(mutations: MutationRecord[]): Promise
   return sha256Hex([...mutations].sort((a,b)=>(a.originSequence??a.sequence??0)-(b.originSequence??b.sequence??0)).map((item)=>`${item.originSequence??item.sequence??0}:${item.id}:${item.payloadHash??""}`).join("|"));
 }
 
+export function brain2MutationGapExpected(lastApplied: number, nextSequence: number): number | null {
+  const cursor = Math.max(0, Math.trunc(lastApplied));
+  const next = Math.trunc(nextSequence);
+  if (next <= cursor) return null;
+  const expected = cursor + 1;
+  return next === expected ? null : expected;
+}
+
+function proofString(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+export function brain2TruthStateMaterial(truths: Array<Record<string, unknown>>): unknown[] {
+  return [...truths]
+    .map((truth) => [
+      proofString(truth.id),
+      proofString(truth.key),
+      proofString(truth.projectId),
+      proofString(truth.atomId),
+      proofString(truth.status),
+      proofString(truth.kind),
+      proofString(truth.text),
+      proofString(truth.canonicalSubject),
+      proofString(truth.value),
+      proofString(truth.scope),
+      proofString(truth.supersedes),
+      (Array.isArray(truth.evidenceAtomIds) ? truth.evidenceAtomIds : []).map(proofString).filter(Boolean).sort(),
+    ])
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+}
+
+export async function brain2TruthStateRoot(truths: Array<Record<string, unknown>>): Promise<string> {
+  return sha256Hex(JSON.stringify(brain2TruthStateMaterial(truths)));
+}
+
+export function brain2MutationFrontier(mutations: Array<Record<string, unknown>>): Array<[string, number]> {
+  const maxByOrigin = new Map<string, number>();
+  for (const mutation of mutations) {
+    const origin = proofString(mutation.originDeviceId ?? mutation.deviceId);
+    const raw = Number(mutation.originSequence ?? mutation.sequence ?? 0);
+    const sequence = Number.isFinite(raw) ? Math.trunc(raw) : 0;
+    if (!origin || sequence < 1) continue;
+    maxByOrigin.set(origin, Math.max(maxByOrigin.get(origin) ?? 0, sequence));
+  }
+  return [...maxByOrigin.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+export async function brain2MutationFrontierRoot(mutations: Array<Record<string, unknown>>): Promise<string> {
+  return sha256Hex(JSON.stringify(brain2MutationFrontier(mutations)));
+}
+
 export async function verifyMutationEnvelope(mutation: MutationRecord): Promise<{ok:boolean;reason?:string}> {
   if (!mutation.payload || !mutation.payloadHash || !mutation.memoryRoot || !mutation.originDeviceId || !mutation.originSequence) {
     return { ok:false, reason:"mutation is lineage-only or missing replication fields" };

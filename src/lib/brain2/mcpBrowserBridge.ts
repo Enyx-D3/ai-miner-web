@@ -1,5 +1,6 @@
 "use client";
 
+import { buildBrain2G11SyncProof } from "./g11SyncProof";
 import {
   addVerification,
   bootBrain2,
@@ -208,6 +209,8 @@ async function dispatch(method: string, params: Record<string, unknown>) {
 
   if (method === "getProject") return resolveProject(params.project);
   if (method === "search") return bridgeSearch(params);
+
+  if (method === "syncProof") return buildBrain2G11SyncProof();
 
   if (method === "inventory") {
     return {

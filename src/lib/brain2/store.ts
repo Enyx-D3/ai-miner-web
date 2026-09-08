@@ -20,7 +20,7 @@ import { runBrain2ForegroundTask } from "./foregroundTaskGate";
 import { brain2MRSError, brain2MRSLog } from "./mrsDebug";
 import { reconcileAtomToTruth } from "./truthEngine";
 import { canonicalId, canonicalMessageId, indexTerms, keywords, normalizeText, sha256, wordCount } from "./identity";
-import { BRAIN2_SYNC_PROTOCOL_VERSION, canonicalJson, hashEntity, hashMutation, hashPayload, packBootstrapRecords, verifyMutationEnvelope } from "./syncProtocol";
+import { brain2MutationGapExpected, BRAIN2_SYNC_PROTOCOL_VERSION, canonicalJson, hashEntity, hashMutation, hashPayload, packBootstrapRecords, verifyMutationEnvelope } from "./syncProtocol";
 import { runASIFReaderQuery } from "./asifReaderCore";
 import { getBrain2BrowserRuntimeIfAvailable, type Brain2RuntimeSearchItem } from "./browserRuntime";
 import { parseRuntimeExecutionEvidence } from "./runtimeEvidence";
@@ -2212,6 +2212,23 @@ export function currentBrain2MemoryRoot(){return snapshot.memoryRoot;}
 
 export async function getSyncReplicaSummary(){await bootBrain2();return{deviceId:currentBrain2DeviceId(),memoryRoot:snapshot.memoryRoot,totalMessages:snapshot.storage.totalMessages,totalAtoms:snapshot.storage.totalAtoms,totalTruths:snapshot.storage.totalTruths,latestLocalSequence:mutationSequence,conflicts:snapshot.syncConflicts.filter((item)=>item.status==="OPEN").length};}
 
+export async function getG11SyncProofMaterial(){
+  await bootBrain2();
+  const db=await openDb();
+  const readAll=<T>(table:TableName)=>new Promise<T[]>((resolve,reject)=>{
+    const tx=db.transaction(table,"readonly");
+    const request=tx.objectStore(table).getAll();
+    request.onsuccess=()=>resolve(request.result as T[]);
+    request.onerror=()=>reject(request.error);
+  });
+  const [truths,mutations,summary]=await Promise.all([
+    readAll<TruthRecord>("truths"),
+    readAll<MutationRecord>("mutations"),
+    getSyncReplicaSummary(),
+  ]);
+  return {truths,mutations,summary,snapshotVersion:snapshot.version};
+}
+
 export async function adoptMemoryRootIfEmpty(memoryRoot:string){await bootBrain2();if(!memoryRoot)throw new Error("Missing Brain2 memory root.");if(snapshot.memoryRoot===memoryRoot)return;if(snapshot.storage.totalMessages||snapshot.storage.totalAtoms||snapshot.projects.length||snapshot.truths.length)throw new Error("This browser already contains a different Brain2 memory. Export/reset it before joining another memory root.");await metaPut("memoryRoot",memoryRoot);snapshot.memoryRoot=memoryRoot;const device=await ensureWebDevice(memoryRoot);snapshot.devices=mergeById(snapshot.devices,[device]);setSnapshot({memoryRoot,devices:snapshot.devices});}
 
 async function upsertSyncPeerInternal(peerDeviceId:string,patch:Partial<SyncPeerRecord>={}){await bootBrain2();const id=`peer_${peerDeviceId}`;const existing=await getOne<SyncPeerRecord>("syncPeers",id);const peer:SyncPeerRecord={id,deviceId:currentBrain2DeviceId(),peerDeviceId,memoryRoot:snapshot.memoryRoot,status:"DISCONNECTED",lastPushedSequence:0,lastAppliedPeerSequence:0,pendingDeltas:0,transport:"WEBRTC",...existing,...patch};await put("syncPeers",peer);snapshot.syncPeers=mergeById(snapshot.syncPeers,[peer]);setSnapshot({syncPeers:snapshot.syncPeers});return peer;}
@@ -2290,7 +2307,7 @@ async function atomicApplyRemote(mutation:MutationRecord,peerDeviceId:string,tra
 
 export async function applyReplicatedMutations(peerDeviceId:string,incoming:MutationRecord[],transport:"WEBRTC"|"HTTPS"|"B2_NETWORK"="WEBRTC"){
   await bootBrain2();const peer=await upsertSyncPeerInternal(peerDeviceId,{status:"SYNCING",transport});const sorted=[...incoming].sort((a,b)=>(a.originSequence??a.sequence??0)-(b.originSequence??b.sequence??0));const accepted:string[]=[];const rejected:Array<{id:string;reason:string}>=[];let lastApplied=peer.lastAppliedPeerSequence;
-  for(const mutation of sorted){if(await getOne<MutationRecord>("mutations",mutation.id)){lastApplied=Math.max(lastApplied,mutation.originSequence??mutation.sequence??0);accepted.push(mutation.id);continue;}const verification=await verifyMutationEnvelope(mutation);if(!verification.ok){rejected.push({id:mutation.id,reason:verification.reason??"invalid mutation"});continue;}if(mutation.memoryRoot!==snapshot.memoryRoot){rejected.push({id:mutation.id,reason:"memory-root mismatch"});continue;}if((mutation.originDeviceId??mutation.deviceId)!==peerDeviceId){rejected.push({id:mutation.id,reason:"origin device mismatch"});continue;}const seq=mutation.originSequence??mutation.sequence??0;if(lastApplied>0&&seq>lastApplied+1){rejected.push({id:mutation.id,reason:`mutation gap: expected ${lastApplied+1}, got ${seq}`});break;}const result=await atomicApplyRemote(mutation,peerDeviceId,transport);if(result.applied){lastApplied=Math.max(lastApplied,seq);accepted.push(mutation.id);}else{rejected.push({id:mutation.id,reason:"concurrent mutation conflict preserved"});break;}}
+  for(const mutation of sorted){if(await getOne<MutationRecord>("mutations",mutation.id)){lastApplied=Math.max(lastApplied,mutation.originSequence??mutation.sequence??0);accepted.push(mutation.id);continue;}const verification=await verifyMutationEnvelope(mutation);if(!verification.ok){rejected.push({id:mutation.id,reason:verification.reason??"invalid mutation"});continue;}if(mutation.memoryRoot!==snapshot.memoryRoot){rejected.push({id:mutation.id,reason:"memory-root mismatch"});continue;}if((mutation.originDeviceId??mutation.deviceId)!==peerDeviceId){rejected.push({id:mutation.id,reason:"origin device mismatch"});continue;}const seq=mutation.originSequence??mutation.sequence??0;const gapExpected=brain2MutationGapExpected(lastApplied,seq);if(gapExpected!==null){rejected.push({id:mutation.id,reason:`mutation gap: expected ${gapExpected}, got ${seq}`});break;}const result=await atomicApplyRemote(mutation,peerDeviceId,transport);if(result.applied){lastApplied=Math.max(lastApplied,seq);accepted.push(mutation.id);}else{rejected.push({id:mutation.id,reason:"concurrent mutation conflict preserved"});break;}}
   await upsertSyncPeerInternal(peerDeviceId,{lastAppliedPeerSequence:lastApplied,lastSyncAt:now(),lastSeenAt:now(),status:rejected.length?"CONFLICT":"SYNCED",transport,error:rejected.length?rejected[0].reason:undefined});if(accepted.length){const state=await refreshStorageState();rebuildIngestionIndexes();setSnapshot({sources:snapshot.sources,conversations:snapshot.conversations,messages:snapshot.messages,atoms:snapshot.atoms,truths:snapshot.truths,projects:snapshot.projects,ticks:snapshot.ticks,decisions:snapshot.decisions,patterns:snapshot.patterns,experiments:snapshot.experiments,missions:snapshot.missions,checkpoints:snapshot.checkpoints,verifications:snapshot.verifications,transactions:snapshot.transactions,patternTests:snapshot.patternTests,portableExpertise:snapshot.portableExpertise,compiledCapabilities:snapshot.compiledCapabilities,reasoningTrajectories:snapshot.reasoningTrajectories,failureMemories:snapshot.failureMemories,databoxes:snapshot.databoxes,evidenceBlocks:snapshot.evidenceBlocks,mutations:snapshot.mutations,syncPeers:snapshot.syncPeers,storage:state});const deltaPayloads=sorted.map((m)=>m.payload).filter((payload):payload is MutationDeltaPayload=>Boolean(payload));if(deltaPayloads.some((payload)=>Boolean(payload.writes.atoms?.length||payload.writes.truths?.length))){scheduleDerivedPatternsRefresh(collectProjectIdsFromDeltaPayloads(deltaPayloads));}}return{accepted,rejected,lastAppliedSequence:lastApplied};
 }
 

@@ -6,6 +6,10 @@ import process from "node:process";
 const root=process.cwd();const dist=join(root,".v8-sync-test-dist");rmSync(dist,{recursive:true,force:true});
 execFileSync(process.platform==="win32"?"tsc.cmd":"tsc",["-p","tsconfig.v8-sync-fixtures.json","--pretty","false"],{stdio:"inherit"});
 const protocol=await import(pathToFileURL(join(dist,"lib/brain2/syncProtocol.js"))); // output preserves src subroot below common source dir
+if(protocol.brain2MutationGapExpected(0,1)!==null)throw new Error("Sequence 1 should be valid from empty cursor");
+if(protocol.brain2MutationGapExpected(0,3)!==1)throw new Error("Initial out-of-order batch was not rejected");
+if(protocol.brain2MutationGapExpected(2,2)!==null)throw new Error("Duplicate/old mutation should remain idempotent");
+if(protocol.brain2MutationGapExpected(2,3)!==null)throw new Error("Contiguous next mutation rejected");
 const server=await import(pathToFileURL(join(dist,"server/brain2/syncServer.js")));
 const temp=join(root,".v8-sync-smoke-data");rmSync(temp,{recursive:true,force:true});mkdirSync(temp,{recursive:true});process.env.BRAIN2_SYNC_DATA_DIR=temp;
 const payload={version:1,operation:"UPSERT_BUNDLE",primaryTable:"ticks",writes:{ticks:[{id:"tick_1",title:"A"}]}};
