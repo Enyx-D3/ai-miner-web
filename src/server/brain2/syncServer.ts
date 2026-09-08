@@ -1,9 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { createRequire } from "node:module";
-
-const nodeRequire=createRequire(join(process.cwd(),"package.json"));
 
 type Db={exec(sql:string):unknown;prepare(sql:string):{run(...args:any[]):any;get(...args:any[]):any;all(...args:any[]):any[]}};
 type GlobalSync=typeof globalThis&{__brain2SyncDb?:Db};
@@ -17,7 +14,7 @@ const id=(prefix:string)=>`${prefix}_${randomBytes(12).toString("hex")}`;
 const netlifyPersistent=()=>Boolean(process.env.NETLIFY||process.env.NETLIFY_BLOBS_CONTEXT);
 
 function dbPath(){const dir=process.env.BRAIN2_SYNC_DATA_DIR||join(process.cwd(),".brain2-sync");mkdirSync(dir,{recursive:true});return join(dir,"brain2-sync.sqlite");}
-function openDb():Db{const holder=globalThis as GlobalSync;if(holder.__brain2SyncDb)return holder.__brain2SyncDb;const{DatabaseSync}=nodeRequire("node:sqlite") as{DatabaseSync:new(path:string)=>Db};const db=new DatabaseSync(dbPath());db.exec(`
+function openDb():Db{const holder=globalThis as GlobalSync;if(holder.__brain2SyncDb)return holder.__brain2SyncDb;const{DatabaseSync}=require("node:sqlite") as{DatabaseSync:new(path:string)=>Db};const db=new DatabaseSync(dbPath());db.exec(`
 PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,space_id TEXT NOT NULL,name TEXT NOT NULL,kind TEXT NOT NULL,trusted INTEGER NOT NULL DEFAULT 1,revoked INTEGER NOT NULL DEFAULT 0,secret_hash TEXT NOT NULL,public_key TEXT,last_seen_at TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_sync_devices_space ON devices(space_id,revoked,last_seen_at);
