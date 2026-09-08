@@ -61,6 +61,7 @@ import type {
   TruthRecord,
   VerificationRecord,
 } from "./types";
+import { journalNeedsRecovery, recoverInterruptedJournal } from "./recovery";
 import type { ProjectIntelligenceWorkerEvent, ProjectIntelligenceWorkerRequest } from "@/workers/brain2ProjectIntelligence.worker";
 
 const DB_NAME = "brain2-ai-miner";
@@ -284,6 +285,16 @@ function mergeById<T extends { id: string }>(base: T[], writes: T[]): T[] {
   const map = new Map(base.map((item)=>[item.id,item]));
   for (const item of writes) map.set(item.id,item);
   return [...map.values()];
+}
+
+async function recoverInterruptedIngestionJournals(
+  journals: IngestionJournalRecord[],
+): Promise<IngestionJournalRecord[]> {
+  const interrupted=journals.filter((journal)=>journalNeedsRecovery(journal.status));
+  if(!interrupted.length)return journals;
+  const recovered=interrupted.map((journal)=>recoverInterruptedJournal(journal,now()));
+  await atomicPut({journals:recovered});
+  return mergeById(journals,recovered);
 }
 
 function buildTelemetryRecord(input:{
@@ -1116,7 +1127,8 @@ export async function bootBrain2(): Promise<void> {
       all<DerivedArtifactRecord>("derivedArtifacts"), recentByIndex<DataboxRecord>("databoxes","byCreatedAt",500), recentByIndex<RetrievalTelemetryRecord>("retrievalTelemetry","byCreatedAt",500), recentByIndex<EvidenceBlockRecord>("evidenceBlocks","byUpdatedAt",500), all<SyncPeerRecord>("syncPeers"), all<SyncConflictRecord>("syncConflicts"),
     ]);
     const truths=mergeById(mergeById(mergeById(currentTruths,conflictingTruths),pendingTruths),recentTruths);
-    const journals=mergeById(mergeById(recentJournals,committedJournals),failedJournals);
+    const loadedJournals=mergeById(mergeById(recentJournals,committedJournals),failedJournals);
+    const journals=await recoverInterruptedIngestionJournals(loadedJournals);
     const webDevice = await ensureWebDevice(memoryRoot);
     const finalDevices = [...devices.filter((device) => device.id !== webDevice.id), webDevice];
     const searchVersion=await metaGet("searchIndexVersion");

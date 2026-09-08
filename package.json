@@ -45,7 +45,8 @@
     "desktop:prepare": "node scripts/prepare-desktop-package.mjs",
     "desktop:build": "next build && npm run desktop:prepare",
     "desktop:dist": "npm run desktop:build && electron-builder --config desktop/electron/electron-builder.yml",
-    "test:g12-archive-safety": "node scripts/test-g12-archive-safety.mjs"
+    "test:g12-archive-safety": "node scripts/test-g12-archive-safety.mjs",
+    "test:g12-recovery": "node scripts/test-g12-recovery.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
