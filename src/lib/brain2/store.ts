@@ -20,7 +20,7 @@ import { runBrain2ForegroundTask } from "./foregroundTaskGate";
 import { brain2MRSError, brain2MRSLog } from "./mrsDebug";
 import { reconcileAtomToTruth } from "./truthEngine";
 import { canonicalId, canonicalMessageId, indexTerms, keywords, normalizeText, sha256, wordCount } from "./identity";
-import { brain2MutationGapExpected, BRAIN2_SYNC_PROTOCOL_VERSION, canonicalJson, hashEntity, hashMutation, hashPayload, packBootstrapRecords, verifyMutationEnvelope } from "./syncProtocol";
+import { brain2MergeWinner, brain2MutationGapExpected, BRAIN2_SYNC_PROTOCOL_VERSION, canonicalJson, hashEntity, hashMutation, hashPayload, packBootstrapRecords, verifyMutationEnvelope } from "./syncProtocol";
 import { runASIFReaderQuery } from "./asifReaderCore";
 import { getBrain2BrowserRuntimeIfAvailable, type Brain2RuntimeSearchItem } from "./browserRuntime";
 import { parseRuntimeExecutionEvidence } from "./runtimeEvidence";
@@ -2312,6 +2312,64 @@ export async function applyReplicatedMutations(peerDeviceId:string,incoming:Muta
 }
 
 export async function streamSyncBootstrap(onChunk:(chunk:{table:SyncTableName|"mutations";records:AnyRecord[];ordinal:number})=>Promise<void>){await bootBrain2();let ordinal=0;for(const table of [...SYNC_TABLES,"mutations" as const]){let key:IDBValidKey|undefined;while(true){const page=await pagedPrimaryRead<AnyRecord>(table,key,100);for(const records of packBootstrapRecords(page.items)){await onChunk({table,records,ordinal:ordinal++});}key=page.lastKey;if(page.items.length<100)break;await new Promise((resolve)=>setTimeout(resolve,0));}}return ordinal;}
+
+export async function streamSyncMergeSnapshot(
+  onChunk: (chunk: {table: SyncTableName; records: AnyRecord[]; ordinal: number}) => Promise<void>,
+) {
+  await bootBrain2();
+  let ordinal = 0;
+  for (const table of SYNC_TABLES) {
+    let key: IDBValidKey | undefined;
+    while (true) {
+      const page = await pagedPrimaryRead<AnyRecord>(table, key, 100);
+      for (const records of packBootstrapRecords(page.items)) {
+        await onChunk({ table, records, ordinal: ordinal++ });
+      }
+      key = page.lastKey;
+      if (page.items.length < 100) break;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+  return ordinal;
+}
+
+export async function applySyncMergeChunk(
+  targetRoot: string,
+  table: string,
+  records: AnyRecord[],
+) {
+  await bootBrain2();
+  if (snapshot.memoryRoot !== targetRoot) {
+    throw new Error("Merge target memory-root mismatch.");
+  }
+  if (!SYNC_TABLE_SET.has(table)) {
+    throw new Error(`Unsupported merge table: ${table}`);
+  }
+
+  const typedTable = table as SyncTableName;
+  const writes: AnyRecord[] = [];
+  for (const incoming of records) {
+    const id = String(incoming.id ?? "");
+    if (!id) continue;
+    const local = await getOne<AnyRecord>(typedTable, id);
+    if (!local) {
+      writes.push(incoming);
+      continue;
+    }
+    const winner = await brain2MergeWinner(local, incoming);
+    if (canonicalJson(local) !== canonicalJson(winner)) writes.push(winner);
+  }
+  await putMany(typedTable, writes);
+  return writes.length;
+}
+
+export async function finalizeSyncMemoryMerge() {
+  await reloadBrain2FromDisk();
+  setTimeout(() => {
+    void rebuildPersistentSearchIndex();
+    scheduleDeferredDerivations({delayMs: 1200, idleTimeoutMs: 9000});
+  }, 0);
+}
 
 export async function applySyncBootstrapChunk(memoryRoot:string,table:SyncTableName|"mutations",records:AnyRecord[]){await bootBrain2();if(snapshot.memoryRoot!==memoryRoot)throw new Error("Bootstrap memory-root mismatch.");if(snapshot.storage.totalMessages>0)throw new Error("Bootstrap is only allowed into an empty Brain2 replica. Existing replicas use mutation sync.");if(table!=="mutations"&&!SYNC_TABLE_SET.has(table))throw new Error("Unsupported bootstrap table.");await putMany(table,records);}
 export async function finalizeSyncBootstrap(){await reloadBrain2FromDisk();setTimeout(()=>{void rebuildPersistentSearchIndex();scheduleDeferredDerivations({delayMs:1200,idleTimeoutMs:9000});},0);}

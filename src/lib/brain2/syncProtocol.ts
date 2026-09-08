@@ -98,6 +98,44 @@ export async function brain2MutationFrontierRoot(mutations: Array<Record<string,
   return sha256Hex(JSON.stringify(brain2MutationFrontier(mutations)));
 }
 
+const BRAIN2_MERGE_CLOCK_FIELDS = [
+  "updatedAt",
+  "createdAt",
+  "occurredAt",
+  "timestamp",
+  "lastSeenAt",
+  "completedAt",
+] as const;
+
+export function brain2MergeClock(record: Record<string, unknown>): string {
+  for (const key of BRAIN2_MERGE_CLOCK_FIELDS) {
+    const value = String(record[key] ?? "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+export async function brain2MergeWinner<T extends Record<string, unknown>>(
+  local: T,
+  incoming: T,
+): Promise<T> {
+  const localJson = canonicalJson(local);
+  const incomingJson = canonicalJson(incoming);
+  if (localJson === incomingJson) return local;
+
+  const localClock = brain2MergeClock(local);
+  const incomingClock = brain2MergeClock(incoming);
+  if (localClock !== incomingClock) {
+    return incomingClock > localClock ? incoming : local;
+  }
+
+  const [localHash, incomingHash] = await Promise.all([
+    sha256Hex(localJson),
+    sha256Hex(incomingJson),
+  ]);
+  return incomingHash > localHash ? incoming : local;
+}
+
 export async function verifyMutationEnvelope(mutation: MutationRecord): Promise<{ok:boolean;reason?:string}> {
   if (!mutation.payload || !mutation.payloadHash || !mutation.memoryRoot || !mutation.originDeviceId || !mutation.originSequence) {
     return { ok:false, reason:"mutation is lineage-only or missing replication fields" };
