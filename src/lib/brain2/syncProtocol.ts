@@ -43,6 +43,14 @@ export async function hashBootstrapChunk(memoryRoot:string,table:string,ordinal:
   return sha256Hex(canonicalJson({memoryRoot,table,ordinal,records}));
 }
 
+export function bootstrapWireHashMaterial(memoryRoot:string,table:string,ordinal:number,recordsJson:string):string {
+  return `B2BOOTSTRAP3\u0000${memoryRoot}\u0000${table}\u0000${ordinal}\u0000${recordsJson}`;
+}
+
+export async function hashBootstrapWireChunk(memoryRoot:string,table:string,ordinal:number,recordsJson:string):Promise<string>{
+  return sha256Hex(bootstrapWireHashMaterial(memoryRoot,table,ordinal,recordsJson));
+}
+
 export async function hashMutationManifest(mutations: MutationRecord[]): Promise<string> {
   return sha256Hex([...mutations].sort((a,b)=>(a.originSequence??a.sequence??0)-(b.originSequence??b.sequence??0)).map((item)=>`${item.originSequence??item.sequence??0}:${item.id}:${item.payloadHash??""}`).join("|"));
 }
