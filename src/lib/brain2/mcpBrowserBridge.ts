@@ -5,8 +5,8 @@ import {
   bootBrain2,
   checkpointMission,
   createMission,
+  currentBrain2DeviceId,
   getBrain2Snapshot,
-  getSyncReplicaSummary,
   loadConversationMessages,
   loadProjectAtoms,
   searchBrain2Async,
@@ -346,25 +346,24 @@ export function startBrain2McpBrowserBridge() {
   activeStop = stop;
 
   void (async () => {
-    if (!(await configured().catch(() => false))) {
-      stop();
-      return;
-    }
-
     let backoff = 250;
     while (!stopped) {
       try {
+        if (!(await configured())) {
+          throw new Error("Web MCP bridge proxy is not configured yet.");
+        }
         await bootBrain2();
-        const summary = await getSyncReplicaSummary();
+        const snapshot = getBrain2Snapshot();
+        const deviceId = currentBrain2DeviceId();
         currentAbort = new AbortController();
         const response = await fetch("/api/brain2-mcp-bridge/poll", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             sessionId: sid,
-            deviceId: summary.deviceId,
-            memoryRoot: summary.memoryRoot,
-            snapshotVersion: getBrain2Snapshot().version,
+            deviceId,
+            memoryRoot: snapshot.memoryRoot,
+            snapshotVersion: snapshot.version,
             websiteOrigin: window.location.origin,
             appVersion: APP_VERSION,
           }),
@@ -399,7 +398,7 @@ export function startBrain2McpBrowserBridge() {
         backoff = 250;
       } catch (error) {
         if (stopped) break;
-        console.warn("[Brain2 MCP bridge]", error instanceof Error ? error.message : String(error));
+        console.warn("[Brain2 MCP bridge] retrying", error instanceof Error ? error.message : String(error));
         await new Promise((resolve) => window.setTimeout(resolve, backoff));
         backoff = Math.min(backoff * 2, 10_000);
       }

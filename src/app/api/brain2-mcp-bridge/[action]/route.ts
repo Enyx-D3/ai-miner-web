@@ -30,21 +30,63 @@ async function actionFrom(context: { params: Promise<{ action: string }> }) {
   return action;
 }
 
+async function upstreamHealth(upstream: string) {
+  try {
+    const response = await fetch(`${upstream}/healthz`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(2_500),
+    });
+    if (!response.ok) return { reachable: false, status: response.status };
+    const body = await response.json().catch(() => ({})) as {
+      bridge?: { ok?: boolean; activeSessions?: unknown[]; pendingRequests?: number };
+      service?: string;
+      aiMinerTransport?: string;
+    };
+    return {
+      reachable: true,
+      status: response.status,
+      service: body.service,
+      aiMinerTransport: body.aiMinerTransport,
+      bridgeOk: Boolean(body.bridge?.ok),
+      activeSessionCount: Array.isArray(body.bridge?.activeSessions) ? body.bridge!.activeSessions!.length : 0,
+      pendingRequests: Number(body.bridge?.pendingRequests ?? 0),
+    };
+  } catch (error) {
+    return {
+      reachable: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ action: string }> },
 ) {
   const action = await actionFrom(context).catch(() => "");
   if (action !== "status") return NextResponse.json({ error: "Not found" }, { status: 404 });
+
   let upstreamConfigured = false;
+  let upstream = "";
   try {
-    upstreamBase();
+    upstream = upstreamBase();
     upstreamConfigured = true;
   } catch {}
+
+  const health = upstreamConfigured ? await upstreamHealth(upstream) : { reachable: false };
   return NextResponse.json({
     enabled: Boolean(bridgeToken()) && upstreamConfigured,
     tokenConfigured: Boolean(bridgeToken()),
     upstreamConfigured,
+    upstreamReachable: health.reachable,
+    upstream: {
+      service: "service" in health ? health.service : undefined,
+      aiMinerTransport: "aiMinerTransport" in health ? health.aiMinerTransport : undefined,
+      bridgeOk: "bridgeOk" in health ? health.bridgeOk : false,
+      activeSessionCount: "activeSessionCount" in health ? health.activeSessionCount : 0,
+      pendingRequests: "pendingRequests" in health ? health.pendingRequests : 0,
+      error: "error" in health ? health.error : undefined,
+    },
   }, { headers: { "cache-control": "no-store" } });
 }
 
@@ -81,13 +123,14 @@ export async function POST(
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
-        origin: request.headers.get("origin") ?? "http://localhost:3000",
       },
       body,
       cache: "no-store",
       signal: AbortSignal.timeout(25_000),
     });
-    if (response.status === 204) return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+    if (response.status === 204) {
+      return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+    }
     const text = await response.text();
     return new Response(text, {
       status: response.status,
