@@ -25,10 +25,10 @@ function syncUrl(path:string){return `${signalingBase()}${path}`;}
 function localToken(){return localStorage.getItem(TOKEN_KEY)||"";}
 function serverDeviceId(){return localStorage.getItem(SERVER_DEVICE_KEY)||currentBrain2DeviceId();}
 function clearLocalCredential(){localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(SERVER_DEVICE_KEY);}
-function isUnknownDeviceError(error:unknown){const msg=error instanceof Error?error.message:String(error);return /Unknown or revoked Brain2 device/i.test(msg);}
+function isUnknownDeviceError(error:unknown){const msg=error instanceof Error?error.message:String(error);return /Unknown or revoked Brain2 device|Invalid Brain2 device sync credential|Brain2 device is not trusted/i.test(msg);}
 async function api(path:string,init?:RequestInit){const r=await fetch(syncUrl(path),init);const body=await r.json().catch(()=>({}));if(!r.ok)throw new Error(body.error||`Brain2 sync request failed (${r.status})`);return body;}
 async function postSignal(peerDeviceId:string,kind:string,payload:any){const token=localToken();if(!token)throw new Error("P2P sync is not enabled on this device.");return api("/api/brain2-sync/signals",{method:"POST",headers:{"Content-Type":"application/json","X-Brain2-Device-Token":token},body:JSON.stringify({fromDeviceId:serverDeviceId(),toDeviceId:peerDeviceId,kind,payload})});}
-async function pullSignals(){const token=localToken();if(!token)return[];const body=await api(`/api/brain2-sync/signals?deviceId=${encodeURIComponent(serverDeviceId())}`,{headers:{"X-Brain2-Device-Token":token}});return (body.signals||[]) as Signal[];}
+async function pullSignals(){const token=localToken();if(!token)return[];try{const body=await api(`/api/brain2-sync/signals?deviceId=${encodeURIComponent(serverDeviceId())}`,{headers:{"X-Brain2-Device-Token":token}});return (body.signals||[]) as Signal[];}catch(error){if(isUnknownDeviceError(error)){clearLocalCredential();return[];}throw error;}}
 
 class PeerSession{
   peerId:string; pc:RTCPeerConnection; channel:RTCDataChannel|null=null; closed=false; outboundInFlight=false;
