@@ -23,6 +23,7 @@ import { canonicalId, canonicalMessageId, indexTerms, keywords, normalizeText, s
 import { BRAIN2_SYNC_PROTOCOL_VERSION, canonicalJson, hashEntity, hashMutation, hashPayload, packBootstrapRecords, verifyMutationEnvelope } from "./syncProtocol";
 import { runASIFReaderQuery } from "./asifReaderCore";
 import { getBrain2BrowserRuntimeIfAvailable, type Brain2RuntimeSearchItem } from "./browserRuntime";
+import { parseRuntimeExecutionEvidence } from "./runtimeEvidence";
 import type {
   AtomRecord,
   B2TransactionRecord,
@@ -1957,6 +1958,63 @@ export async function checkpointMission(id:string,state:string,note:string){awai
 export async function addVerification(entityType:string,entityId:string,status:VerificationRecord["status"],detail:string){await bootBrain2();const createdAt=now();const id=await canonicalId("verify",entityType,entityId,createdAt);const verification:VerificationRecord={id,entityType,entityId,status,detail,createdAt};const mutation=await buildMutation("CREATE","verification",id,deltaPayload("verifications",{verifications:[verification]}));await atomicPut({verifications:[verification],mutations:[mutation]});snapshot.verifications=mergeById(snapshot.verifications,[verification]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({verifications:snapshot.verifications,mutations:snapshot.mutations});}
 
 export async function addTransaction(type:B2TransactionRecord["type"],payload:string,projectId?:string){await bootBrain2();const createdAt=now();const payloadHash=await sha256(payload);const prior=[...snapshot.transactions].sort((a,b)=>(b.sequence??0)-(a.sequence??0)||b.createdAt.localeCompare(a.createdAt))[0];const sequence=(prior?.sequence??0)+1;const protocolVersion=2;const hash=await sha256(`${protocolVersion}|${type}|${projectId??""}|${payloadHash}|${prior?.id??""}|${sequence}`);const transaction:B2TransactionRecord={id:`b2tx_${hash.slice(0,24)}`,type,projectId,payload,createdAt,hash,payloadHash,parentId:prior?.id,sequence,protocolVersion};const mutation=await buildMutation("CREATE","transaction",transaction.id,deltaPayload("transactions",{transactions:[transaction]}));await atomicPut({transactions:[transaction],mutations:[mutation]});snapshot.transactions=mergeById(snapshot.transactions,[transaction]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({transactions:snapshot.transactions,mutations:snapshot.mutations});}
+
+export async function commitVerifiedRuntimeEvidence(
+  result:unknown,
+  structuralVerification:{status:"PASS"|"FAIL"|"PENDING";detail:string},
+){
+  await bootBrain2();
+  const runtime=parseRuntimeExecutionEvidence(result);
+  if(!runtime)return{committed:false,reason:"NOT_RUNTIME_EXECUTION"} as const;
+  if(structuralVerification.status!=="PASS")throw new Error("Runtime evidence cannot commit unless canonical B2RESULT provenance passes.");
+  const parsed=result as {jobId?:string;databoxHash?:string;evidenceIds?:string[]};
+  const jobTx=[...snapshot.transactions].reverse().find((tx)=>tx.type==="B2JOB"&&(()=>{try{return JSON.parse(tx.payload)?.id===parsed.jobId}catch{return false}})());
+  if(!jobTx)throw new Error("Canonical B2JOB is required before runtime evidence commit.");
+  const job=JSON.parse(jobTx.payload) as {id:string;projectId?:string;databox?:{hash?:string};evidence?:Array<{id:string}>};
+  if(!job.projectId||job.projectId!==runtime.projectId)throw new Error("Runtime evidence project scope does not match the canonical B2JOB.");
+  if(job.databox?.hash!==parsed.databoxHash)throw new Error("Runtime evidence Databox hash mismatch.");
+  const allowed=new Set((job.evidence??[]).map((item)=>item.id));
+  if(runtime.evidenceIds.some((id)=>!allowed.has(id)))throw new Error("Runtime evidence escaped the canonical B2JOB boundary.");
+  const project=snapshot.projects.find((item)=>item.id===runtime.projectId);
+  if(!project)throw new Error("Runtime evidence project is not present in canonical AI Miner memory.");
+
+  const sourceId=await canonicalId("source","generic","brain2-runtime-v1");
+  const conversationId=await canonicalId("conversation","generic",`brain2-runtime:${runtime.projectId}`);
+  const messageId=await canonicalId("message","brain2-runtime",runtime.runtimeJobId);
+  const atomId=await canonicalId("atom","brain2-runtime",runtime.runtimeJobId,runtime.capability);
+  const truthId=await canonicalId("truth","brain2-runtime",runtime.runtimeJobId,runtime.capability);
+  const existingTruth=await getOne<TruthRecord>("truths",truthId);
+  if(existingTruth)return{committed:false,reason:"ALREADY_COMMITTED",truthId,atomId} as const;
+
+  const createdAt=runtime.executionResult.finishedAt??new Date().toISOString();
+  const existingSource=await getOne<SourceRecord>("sources",sourceId);
+  const source:SourceRecord=existingSource?{...existingSource,lastSeenAt:createdAt}:{id:sourceId,provider:"generic",label:"Brain2 Runtime",sourceType:"Verified bounded runtime execution",createdAt,lastSeenAt:createdAt,schemaVersion:BRAIN2_SCHEMA_VERSION};
+  const existingConversation=await getOne<ConversationRecord>("conversations",conversationId);
+  const messageHash=await sha256(runtime.observedStatement);
+  const message:MessageRecord={id:messageId,conversationId,sourceId,provider:"generic",externalId:runtime.runtimeJobId,role:"tool",text:runtime.observedStatement,createdAt,occurredAt:createdAt,capturedAt:createdAt,timestampSource:"capture",sequence:(existingConversation?.messageCount??0)+1,hash:messageHash,wordCount:wordCount(runtime.observedStatement),schemaVersion:BRAIN2_SCHEMA_VERSION};
+  const conversation:ConversationRecord={id:conversationId,sourceId,provider:"generic",externalId:`brain2-runtime:${runtime.projectId}`,title:`Brain2 Runtime - ${project.name}`,createdAt:existingConversation?.createdAt??createdAt,updatedAt:createdAt,projectId:runtime.projectId,messageCount:(existingConversation?.messageCount??0)+1,wordCount:(existingConversation?.wordCount??0)+message.wordCount,schemaVersion:BRAIN2_SCHEMA_VERSION};
+  const scope=`runtime:${runtime.capability}:${runtime.runtimeJobId}`;
+  const atomHash=await sha256(`${runtime.runtimeJobId}|${runtime.capability}|${runtime.observedStatement}|${runtime.executionResult.outputHashes.join(",")}`);
+  const atom:AtomRecord={id:atomId,messageId,conversationId,projectId:runtime.projectId,sourceId,kind:"fact",subject:`Verified runtime execution ${runtime.runtimeJobId}`,canonicalSubject:`runtime.${runtime.capability}.${runtime.runtimeJobId}`,value:runtime.executionResult.outputHashes.join(","),scope,text:runtime.observedStatement,createdAt,confidence:1,provenance:[...runtime.evidenceIds,`runtime-job:${runtime.runtimeJobId}`],keywords:indexTerms(`${runtime.capability} ${runtime.observedStatement}`,16),hash:atomHash,truthStatus:"CURRENT",truthRelation:"NEW",truthRecordId:truthId,ruleTrace:["runtime:verified","runtime:r1_authorized","runtime:mechanical_observation","r2:no_direct_promotion"],relationSafe:true,extractionVersion:"B2_RUNTIME_EVIDENCE_V1",schemaVersion:BRAIN2_SCHEMA_VERSION};
+  const truth:TruthRecord={id:truthId,key:`runtime:${runtime.runtimeJobId}:${runtime.capability}`,projectId:runtime.projectId,conversationId,sourceId,atomId,text:runtime.observedStatement,kind:"fact",status:"CURRENT",confidence:1,createdAt,updatedAt:createdAt,relation:"NEW",evidenceAtomIds:[atomId],canonicalSubject:atom.canonicalSubject,value:atom.value,scope,reconciliationVersion:"B2_RUNTIME_EVIDENCE_V1",schemaVersion:BRAIN2_SCHEMA_VERSION};
+  const updatedProject:ProjectRecord={...project,updatedAt:createdAt,conversationIds:[...new Set([...project.conversationIds,conversationId])],atomIds:[...new Set([...project.atomIds,atomId])],recentAtomIds:[atomId,...(project.recentAtomIds??[]).filter((id)=>id!==atomId)].slice(0,120),atomCount:(project.atomCount??project.atomIds.length)+1};
+  const writes:MutationDeltaPayload["writes"]={sources:[source],conversations:[conversation],messages:[message],atoms:[atom],truths:[truth],projects:[updatedProject]};
+  const payload=deltaPayload("truths",writes);
+  const mutation=await buildMutation("CREATE","runtimeEvidence",truthId,payload);
+  const searchDocs=await searchDocsForDelta(payload);
+  await atomicPut({sources:[source],conversations:[conversation],messages:[message],atoms:[atom],truths:[truth],projects:[updatedProject],mutations:[mutation],...(searchDocs.writes.length?{searchDocs:searchDocs.writes}:{})});
+  snapshot.sources=mergeById(snapshot.sources,[source]);
+  snapshot.conversations=mergeById(snapshot.conversations,[conversation]);
+  snapshot.messages=mergeById(snapshot.messages,[message]).slice(-HOT_MESSAGE_LIMIT);
+  snapshot.atoms=mergeById(snapshot.atoms,[atom]).slice(-HOT_ATOM_LIMIT);
+  snapshot.truths=mergeById(snapshot.truths,[truth]);
+  snapshot.projects=mergeById(snapshot.projects,[updatedProject]);
+  snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);
+  snapshot.storage={...snapshot.storage,totalMessages:snapshot.storage.totalMessages+1,totalAtoms:snapshot.storage.totalAtoms+1,totalTruths:snapshot.storage.totalTruths+1,totalConversations:snapshot.storage.totalConversations+(existingConversation?0:1),indexedDocuments:snapshot.storage.indexedDocuments+searchDocs.writes.length,hotMessages:Math.min(HOT_MESSAGE_LIMIT,snapshot.storage.hotMessages+1),hotAtoms:Math.min(HOT_ATOM_LIMIT,snapshot.storage.hotAtoms+1)};
+  setSnapshot({sources:snapshot.sources,conversations:snapshot.conversations,messages:snapshot.messages,atoms:snapshot.atoms,truths:snapshot.truths,projects:snapshot.projects,mutations:snapshot.mutations,storage:snapshot.storage});
+  scheduleDerivedPatternsRefresh([runtime.projectId]);
+  return{committed:true,truthId,atomId,projectId:runtime.projectId,hypothesisId:runtime.hypothesisId,r2Action:"RECALCULATE_FROM_UPDATED_R1"} as const;
+}
 
 export async function refreshDerivedPatterns(){await bootBrain2();const conflicting=await getAllByIndex<TruthRecord>("truths","byStatus","CONFLICTING");const conflictingAtomIds=new Set(conflicting.flatMap((truth)=>truth.evidenceAtomIds??[truth.atomId]));const aggregates=new Map<string,PatternAggregate>();let key:IDBValidKey|undefined;while(true){const page=await pagedPrimaryRead<AtomRecord>("atoms",key,SEARCH_INDEX_BATCH);for(const atom of page.items)accumulatePattern(aggregates,atom,conflictingAtomIds);key=page.lastKey;if(page.items.length<SEARCH_INDEX_BATCH)break;await new Promise((resolve)=>setTimeout(resolve,0));}const patterns=await buildPatternsFromAggregates(aggregates.values(),250,snapshot.patternTests);const db=await openDb();await new Promise<void>((resolve,reject)=>{const tx=db.transaction(["patterns","meta"],"readwrite");const store=tx.objectStore("patterns");store.clear();for(const pattern of patterns)store.put(pattern);tx.objectStore("meta").put({id:"patternVersion",value:BRAIN2_PATTERN_VERSION});tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error("Pattern rebuild aborted"));});snapshot.patterns=patterns;invalidateRuntimeIndex();}
 
