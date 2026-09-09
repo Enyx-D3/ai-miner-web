@@ -4,16 +4,32 @@ declare const process: { env: Record<string,string|undefined> };
 
 import { adoptMemoryRootIfEmpty, applyReplicatedMutations, applySyncBootstrapChunk, applySyncMergeChunk, currentBrain2DeviceId, finalizeSyncBootstrap, finalizeSyncMemoryMerge, getReplicableMutationsForPeer, getSyncReplicaSummary, markPeerAck, streamSyncBootstrap, streamSyncMergeSnapshot, subscribeBrain2, updateSyncPeer } from "./store";
 import { sha256 } from "./identity";
-import { BRAIN2_SYNC_BATCH_LIMIT, BRAIN2_SYNC_CHANNEL, hashBootstrapChunk, hashMutationManifest } from "./syncProtocol";
+import { BRAIN2_SYNC_BATCH_LIMIT, BRAIN2_SYNC_CHANNEL, hashBootstrapChunk, hashMutationManifest, verifyMutationEnvelope } from "./syncProtocol";
+import {
+  assertBrain2DecodedFrameBytes,
+  assertBrain2FrameMetadata,
+  assertBrain2PhysicalMessageSize,
+  assertBrain2WireMessageType,
+  assertBrain2WireObject,
+  brain2AckMatchesPending,
+  brain2SequenceRangeMatches,
+  Brain2ReplayWindow,
+  BRAIN2_SYNC_FRAME_MAX_ASSEMBLIES,
+  BRAIN2_SYNC_FRAME_PAYLOAD_MAX_BYTES,
+  BRAIN2_SYNC_FRAME_TTL_MS,
+  BRAIN2_SYNC_REASSEMBLED_MAX_BYTES,
+} from "./syncSafety";
 import type { MutationRecord, SyncTableName } from "./types";
 
 type Signal={id:string;fromDeviceId:string;toDeviceId:string;kind:"offer"|"answer"|"ice"|"bye";payload:any};
 type WireMessage =
  | {type:"hello";summary:Awaited<ReturnType<typeof getSyncReplicaSummary>>}
+ | {type:"sync_request";fromSequence?:number}
  | {type:"mutations";mutations:MutationRecord[];manifestHash:string;fromSequence:number;toSequence:number;originDeviceId?:string}
  | {type:"ack";sequence:number;manifestHash?:string;originDeviceId?:string}
  | {type:"bootstrap_request"}
  | {type:"bootstrap_chunk";memoryRoot:string;table:SyncTableName|"mutations";records?:Array<{id:string;[key:string]:unknown}>;recordsJson?:string;hashVersion?:number;ordinal:number;chunkHash:string}
+ | {type:"bootstrap_ack";ordinal:number}
  | {type:"bootstrap_complete";memoryRoot:string}
  | {type:"merge_request";targetRoot:string;localSummary?:Record<string,unknown>}
  | {type:"merge_accept";targetRoot:string}
@@ -27,13 +43,11 @@ type WireMessage =
 
 const TOKEN_KEY="brain2-p2p-device-token";
 const SERVER_DEVICE_KEY="brain2-p2p-server-device-id";
-const BRAIN2_TRANSPORT_FRAME_PAYLOAD_BYTES=8*1024;
-const BRAIN2_TRANSPORT_MAX_REASSEMBLED_BYTES=64*1024*1024;
 const transportEncoder=new TextEncoder();
 const transportDecoder=new TextDecoder();
 
 type Brain2TransportFrame={__brain2Frame:1;id:string;index:number;total:number;data:string};
-type Brain2FrameAssembly={total:number;parts:Array<Uint8Array|null>;received:number;bytes:number};
+type Brain2FrameAssembly={total:number;parts:Array<Uint8Array|null>;received:number;bytes:number;updatedAt:number};
 
 function bytesToBase64(bytes:Uint8Array){let binary="";for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);return btoa(binary);}
 function base64ToBytes(value:string){const binary=atob(value);const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);return bytes;}
@@ -52,6 +66,9 @@ async function pullSignals(){const token=localToken();if(!token)return[];try{con
 class PeerSession{
   peerId:string; pc:RTCPeerConnection; channel:RTCDataChannel|null=null; closed=false; outboundInFlight=false; rootVerified=false; merging=false;
   incomingFrames=new Map<string,Brain2FrameAssembly>(); incomingWork:Promise<void>=Promise.resolve(); frameCounter=0;
+  outboundManifestHash=""; outboundToSequence=0;
+  mergePhase:"IDLE"|"ACCEPTED"|"SEEDING"|"AWAITING_RETURN"="IDLE"; mergeReturnOrdinal=0;
+  receivingBootstrap=false; inboundBootstrapOrdinal=0;
   constructor(peerId:string,initiator:boolean){this.peerId=peerId;this.pc=new RTCPeerConnection(iceConfig());this.pc.onicecandidate=(event)=>{if(event.candidate)void postSignal(peerId,"ice",event.candidate.toJSON());};this.pc.onconnectionstatechange=()=>{const state=this.pc.connectionState;if(state==="connected")void updateSyncPeer(peerId,{status:"CONNECTED",lastSeenAt:new Date().toISOString(),transport:"WEBRTC"});if(["failed","closed","disconnected"].includes(state))void updateSyncPeer(peerId,{status:state==="failed"?"ERROR":"DISCONNECTED",error:state==="failed"?"WebRTC connection failed":undefined});};this.pc.ondatachannel=(event)=>this.attach(event.channel);if(initiator)this.attach(this.pc.createDataChannel(BRAIN2_SYNC_CHANNEL,{ordered:true}));}
   attach(channel:RTCDataChannel){
     this.channel=channel;
@@ -62,50 +79,124 @@ class PeerSession{
       const raw=String(event.data);
       this.incomingWork=this.incomingWork
         .then(()=>this.onRawText(raw))
-        .catch((error)=>{void updateSyncPeer(this.peerId,{status:"ERROR",error:error instanceof Error?error.message:String(error)});});
+        .catch((error)=>{
+          void updateSyncPeer(this.peerId,{status:"ERROR",error:error instanceof Error?error.message:String(error)});
+          this.close();
+        });
     };
-    channel.onclose=()=>{this.rootVerified=false;void updateSyncPeer(this.peerId,{status:"DISCONNECTED"});};
+    channel.onclose=()=>{
+      this.rootVerified=false;
+      this.outboundInFlight=false;
+      this.outboundManifestHash="";
+      this.outboundToSequence=0;
+      this.receivingBootstrap=false;
+      this.inboundBootstrapOrdinal=0;
+      if(!this.closed)void updateSyncPeer(this.peerId,{status:"DISCONNECTED"});
+    };
   }
   async waitDrain(){while(this.channel && this.channel.bufferedAmount>512*1024){const channel=this.channel;await new Promise<void>((resolve)=>{const done=()=>{channel.removeEventListener("bufferedamountlow",done);resolve();};channel.addEventListener("bufferedamountlow",done,{once:true});setTimeout(done,250);});}}
   async sendPhysical(text:string){if(!this.channel||this.channel.readyState!=="open")throw new Error("Brain2 P2P data channel is not open.");await this.waitDrain();this.channel.send(text);}
   async send(message:WireMessage){
     const raw=JSON.stringify(message);
     const bytes=transportEncoder.encode(raw);
-    if(bytes.byteLength<=BRAIN2_TRANSPORT_FRAME_PAYLOAD_BYTES){await this.sendPhysical(raw);return;}
+    if(bytes.byteLength>BRAIN2_SYNC_REASSEMBLED_MAX_BYTES)throw new Error("Brain2 logical P2P message exceeded the 64 MiB limit.");
+    if(bytes.byteLength<=BRAIN2_SYNC_FRAME_PAYLOAD_MAX_BYTES){await this.sendPhysical(raw);return;}
     const id=`${serverDeviceId()}-${Date.now()}-${this.frameCounter++}`;
-    const total=Math.ceil(bytes.byteLength/BRAIN2_TRANSPORT_FRAME_PAYLOAD_BYTES);
+    const total=Math.ceil(bytes.byteLength/BRAIN2_SYNC_FRAME_PAYLOAD_MAX_BYTES);
     for(let index=0;index<total;index++){
-      const start=index*BRAIN2_TRANSPORT_FRAME_PAYLOAD_BYTES;
-      const end=Math.min(bytes.byteLength,start+BRAIN2_TRANSPORT_FRAME_PAYLOAD_BYTES);
+      const start=index*BRAIN2_SYNC_FRAME_PAYLOAD_MAX_BYTES;
+      const end=Math.min(bytes.byteLength,start+BRAIN2_SYNC_FRAME_PAYLOAD_MAX_BYTES);
       const frame:Brain2TransportFrame={__brain2Frame:1,id,index,total,data:bytesToBase64(bytes.subarray(start,end))};
       await this.sendPhysical(JSON.stringify(frame));
     }
   }
+  pruneFrameAssemblies(){
+    const cutoff=Date.now()-BRAIN2_SYNC_FRAME_TTL_MS;
+    for(const [key,assembly] of this.incomingFrames){
+      if(assembly.updatedAt<cutoff)this.incomingFrames.delete(key);
+    }
+  }
+  incomingFrameBytes(){
+    let total=0;
+    for(const assembly of this.incomingFrames.values())total+=assembly.bytes;
+    return total;
+  }
   async onRawText(raw:string){
-    const decoded=JSON.parse(raw) as WireMessage|Brain2TransportFrame;
-    if((decoded as Brain2TransportFrame).__brain2Frame===1){await this.acceptFrame(decoded as Brain2TransportFrame);return;}
-    await this.onMessage(decoded as WireMessage);
+    assertBrain2PhysicalMessageSize(raw);
+    const decoded=JSON.parse(raw) as unknown;
+    assertBrain2WireObject(decoded);
+    if(decoded.__brain2Frame===1){await this.acceptFrame(decoded as unknown as Brain2TransportFrame);return;}
+    assertBrain2WireMessageType(decoded.type);
+    await this.onMessage(decoded as unknown as WireMessage);
   }
   async acceptFrame(frame:Brain2TransportFrame){
-    if(!frame.id||frame.total<1||frame.total>16384||frame.index<0||frame.index>=frame.total)throw new Error("Invalid Brain2 transport frame.");
+    assertBrain2FrameMetadata(frame as unknown as Record<string,unknown>);
+    this.pruneFrameAssemblies();
+    const bytes=base64ToBytes(frame.data);
+    assertBrain2DecodedFrameBytes(bytes.byteLength);
     const key=frame.id;
     let assembly=this.incomingFrames.get(key);
-    if(!assembly){assembly={total:frame.total,parts:Array<Uint8Array|null>(frame.total).fill(null),received:0,bytes:0};this.incomingFrames.set(key,assembly);}
-    if(assembly.total!==frame.total){this.incomingFrames.delete(key);throw new Error("Brain2 transport frame total changed.");}
+    if(!assembly){
+      if(this.incomingFrames.size>=BRAIN2_SYNC_FRAME_MAX_ASSEMBLIES)throw new Error("Too many concurrent Brain2 frame assemblies.");
+      assembly={total:frame.total,parts:Array<Uint8Array|null>(frame.total).fill(null),received:0,bytes:0,updatedAt:Date.now()};
+      this.incomingFrames.set(key,assembly);
+    }
+    if(assembly.total!==frame.total){
+      this.incomingFrames.delete(key);
+      throw new Error("Brain2 transport frame total changed.");
+    }
     if(assembly.parts[frame.index])return;
-    const bytes=base64ToBytes(frame.data);
-    assembly.parts[frame.index]=bytes;assembly.received+=1;assembly.bytes+=bytes.byteLength;
-    if(assembly.bytes>BRAIN2_TRANSPORT_MAX_REASSEMBLED_BYTES){this.incomingFrames.delete(key);throw new Error("Brain2 transport message exceeded reassembly limit.");}
+    if(this.incomingFrameBytes()+bytes.byteLength>BRAIN2_SYNC_REASSEMBLED_MAX_BYTES){
+      this.incomingFrames.delete(key);
+      throw new Error("Brain2 aggregate frame reassembly budget exceeded.");
+    }
+    assembly.parts[frame.index]=bytes;
+    assembly.received+=1;
+    assembly.bytes+=bytes.byteLength;
+    assembly.updatedAt=Date.now();
     if(assembly.received!==assembly.total)return;
-    const merged=new Uint8Array(assembly.bytes);let offset=0;
-    for(const part of assembly.parts){if(!part){this.incomingFrames.delete(key);throw new Error("Brain2 transport frame missing during reassembly.");}merged.set(part,offset);offset+=part.byteLength;}
+    const merged=new Uint8Array(assembly.bytes);
+    let offset=0;
+    for(const part of assembly.parts){
+      if(!part){
+        this.incomingFrames.delete(key);
+        throw new Error("Brain2 transport frame missing during reassembly.");
+      }
+      merged.set(part,offset);
+      offset+=part.byteLength;
+    }
     this.incomingFrames.delete(key);
-    await this.onMessage(JSON.parse(transportDecoder.decode(merged)) as WireMessage);
+    const decoded=JSON.parse(transportDecoder.decode(merged)) as unknown;
+    assertBrain2WireObject(decoded);
+    assertBrain2WireMessageType(decoded.type);
+    await this.onMessage(decoded as unknown as WireMessage);
   }
   async onOpen(){this.rootVerified=false;await updateSyncPeer(this.peerId,{status:"SYNCING",lastSeenAt:new Date().toISOString(),transport:"WEBRTC"});await this.send({type:"hello",summary:await getSyncReplicaSummary()});}
-  async sendPending(){if(this.closed||this.merging||!this.rootVerified||this.outboundInFlight||!this.channel||this.channel.readyState!=="open")return;const mutations=await getReplicableMutationsForPeer(this.peerId,BRAIN2_SYNC_BATCH_LIMIT);if(!mutations.length)return;this.outboundInFlight=true;try{const manifestHash=await hashMutationManifest(mutations);await this.send({type:"mutations",mutations,manifestHash,fromSequence:mutations[0].originSequence??mutations[0].sequence??0,toSequence:mutations.at(-1)?.originSequence??mutations.at(-1)?.sequence??0});}catch(error){this.outboundInFlight=false;throw error;}}
+  async sendPending(){
+    if(this.closed||this.merging||!this.rootVerified||this.outboundInFlight||!this.channel||this.channel.readyState!=="open")return;
+    const mutations=await getReplicableMutationsForPeer(this.peerId,BRAIN2_SYNC_BATCH_LIMIT);
+    if(!mutations.length)return;
+    const manifestHash=await hashMutationManifest(mutations);
+    const fromSequence=mutations[0].originSequence??mutations[0].sequence??0;
+    const toSequence=mutations.at(-1)?.originSequence??mutations.at(-1)?.sequence??0;
+    if(!brain2SequenceRangeMatches(mutations.map((item)=>item.originSequence??item.sequence??0),fromSequence,toSequence))throw new Error("Local Brain2 mutation batch is not contiguous.");
+    this.outboundInFlight=true;
+    this.outboundManifestHash=manifestHash;
+    this.outboundToSequence=toSequence;
+    try{
+      await this.send({type:"mutations",mutations,manifestHash,fromSequence,toSequence,originDeviceId:serverDeviceId()});
+    }catch(error){
+      this.outboundInFlight=false;
+      this.outboundManifestHash="";
+      this.outboundToSequence=0;
+      throw error;
+    }
+  }
   async onMessage(message:WireMessage){
+    assertBrain2WireMessageType(message.type);
     if(message.type==="hello"){
+      if(this.merging)throw new Error("Brain2 hello is not allowed during an active merge.");
+      if(!message.summary||typeof message.summary!=="object"||typeof message.summary.memoryRoot!=="string"||!message.summary.memoryRoot)throw new Error("Invalid Brain2 hello summary.");
       const local=await getSyncReplicaSummary();
       if(message.summary.memoryRoot!==local.memoryRoot){
         this.rootVerified=false;
@@ -114,53 +205,79 @@ class PeerSession{
       }
       this.rootVerified=true;
       await updateSyncPeer(this.peerId,{status:"SYNCING",lastSeenAt:new Date().toISOString(),pendingDeltas:Math.max(0,message.summary.latestLocalSequence),transport:"WEBRTC",error:undefined});
-      if(local.totalMessages===0&&message.summary.totalMessages>0)await this.send({type:"bootstrap_request"});
-      else await this.sendPending();
+      if(local.totalMessages===0&&message.summary.totalMessages>0){
+        this.receivingBootstrap=true;
+        this.inboundBootstrapOrdinal=0;
+        await this.send({type:"bootstrap_request"});
+      }else{
+        this.receivingBootstrap=false;
+        this.inboundBootstrapOrdinal=0;
+        await this.sendPending();
+      }
       return;
     }
     if(message.type==="merge_request"){
       const local=await getSyncReplicaSummary();
+      if(this.merging||this.mergePhase!=="IDLE")throw new Error("A Brain2 merge is already active.");
       if(message.targetRoot!==local.memoryRoot)throw new Error("Unexpected Brain2 merge target.");
-      this.merging=true;this.rootVerified=false;this.outboundInFlight=false;
+      this.merging=true;this.mergePhase="ACCEPTED";this.mergeReturnOrdinal=0;this.rootVerified=false;this.outboundInFlight=false;this.outboundManifestHash="";this.outboundToSequence=0;
       await updateSyncPeer(this.peerId,{status:"SYNCING",lastSeenAt:new Date().toISOString(),transport:"WEBRTC",error:undefined});
       await this.send({type:"merge_accept",targetRoot:local.memoryRoot});
       return;
     }
     if(message.type==="merge_ready"){
       const local=await getSyncReplicaSummary();
+      if(!this.merging||this.mergePhase!=="ACCEPTED")throw new Error("Unexpected Brain2 merge_ready.");
       if(message.targetRoot!==local.memoryRoot)throw new Error("Brain2 merge-ready root mismatch.");
-      this.merging=true;
+      this.mergePhase="SEEDING";
       await streamSyncMergeSnapshot(async(chunk)=>{
         const recordsJson=JSON.stringify(chunk.records);
         const chunkHash=await sha256(recordsJson);
         await this.send({type:"merge_seed_chunk",targetRoot:local.memoryRoot,table:chunk.table,ordinal:chunk.ordinal,recordsJson,chunkHash});
       });
       await this.send({type:"merge_seed_complete",targetRoot:local.memoryRoot});
+      this.mergePhase="AWAITING_RETURN";
+      this.mergeReturnOrdinal=0;
       return;
     }
     if(message.type==="merge_return_chunk"){
       const local=await getSyncReplicaSummary();
+      if(!this.merging||this.mergePhase!=="AWAITING_RETURN")throw new Error("Unexpected Brain2 merge return chunk.");
       if(message.targetRoot!==local.memoryRoot)throw new Error("Brain2 merge return root mismatch.");
+      if(!Number.isSafeInteger(message.ordinal)||message.ordinal!==this.mergeReturnOrdinal)throw new Error(`Brain2 merge return ordinal mismatch: expected ${this.mergeReturnOrdinal}, got ${message.ordinal}`);
       const actual=await sha256(message.recordsJson);
       if(actual!==message.chunkHash)throw new Error("Brain2 merge return chunk hash mismatch.");
       const decoded=JSON.parse(message.recordsJson) as unknown;
       if(!Array.isArray(decoded))throw new Error("Brain2 merge return chunk is not a record list.");
       const records=decoded.map((item)=>item as {id:string;[key:string]:unknown});
       await applySyncMergeChunk(local.memoryRoot,message.table,records);
+      this.mergeReturnOrdinal+=1;
       return;
     }
     if(message.type==="merge_return_complete"){
       const local=await getSyncReplicaSummary();
+      if(!this.merging||this.mergePhase!=="AWAITING_RETURN")throw new Error("Unexpected Brain2 merge return completion.");
       if(message.targetRoot!==local.memoryRoot)throw new Error("Brain2 merge return completion root mismatch.");
       await finalizeSyncMemoryMerge();
-      this.merging=false;this.rootVerified=false;this.outboundInFlight=false;
+      this.merging=false;this.mergePhase="IDLE";this.mergeReturnOrdinal=0;this.rootVerified=false;this.outboundInFlight=false;this.outboundManifestHash="";this.outboundToSequence=0;
       await updateSyncPeer(this.peerId,{status:"SYNCING",lastSeenAt:new Date().toISOString(),transport:"WEBRTC",error:undefined});
       await this.send({type:"merge_complete",targetRoot:message.targetRoot});
       await this.send({type:"hello",summary:await getSyncReplicaSummary()});
       return;
     }
-    if(message.type==="bootstrap_request"){const summary=await getSyncReplicaSummary();await streamSyncBootstrap(async(chunk)=>{const chunkHash=await hashBootstrapChunk(summary.memoryRoot,chunk.table,chunk.ordinal,chunk.records);await this.send({type:"bootstrap_chunk",memoryRoot:summary.memoryRoot,...chunk,chunkHash});});await this.send({type:"bootstrap_complete",memoryRoot:summary.memoryRoot});return;}
+    if(message.type==="bootstrap_request"){
+      if(!this.rootVerified||this.merging)throw new Error("Bootstrap request arrived before same-root verification.");
+      const summary=await getSyncReplicaSummary();
+      await streamSyncBootstrap(async(chunk)=>{
+        const chunkHash=await hashBootstrapChunk(summary.memoryRoot,chunk.table,chunk.ordinal,chunk.records);
+        await this.send({type:"bootstrap_chunk",memoryRoot:summary.memoryRoot,...chunk,chunkHash});
+      });
+      await this.send({type:"bootstrap_complete",memoryRoot:summary.memoryRoot});
+      return;
+    }
     if(message.type==="bootstrap_chunk"){
+      if(!this.rootVerified||!this.receivingBootstrap||this.merging)throw new Error("Unexpected Brain2 bootstrap chunk.");
+      if(!Number.isSafeInteger(message.ordinal)||message.ordinal!==this.inboundBootstrapOrdinal)throw new Error(`Brain2 bootstrap ordinal mismatch: expected ${this.inboundBootstrapOrdinal}, got ${message.ordinal}`);
       let records:Array<{id:string;[key:string]:unknown}>;
       let actual:string;
       if(message.hashVersion===3&&typeof message.recordsJson==="string"){
@@ -174,21 +291,75 @@ class PeerSession{
       }
       if(actual!==message.chunkHash)throw new Error("Brain2 bootstrap chunk hash mismatch.");
       await applySyncBootstrapChunk(message.memoryRoot,message.table,records);
+      this.inboundBootstrapOrdinal+=1;
       return;
     }
-    if(message.type==="bootstrap_complete"){await finalizeSyncBootstrap();await this.send({type:"hello",summary:await getSyncReplicaSummary()});return;}
-    if(message.type==="mutations"){const actualManifest=await hashMutationManifest(message.mutations);if(actualManifest!==message.manifestHash)throw new Error("Brain2 mutation batch manifest mismatch.");const result=await applyReplicatedMutations(this.peerId,message.mutations,"WEBRTC");await updateSyncPeer(this.peerId,{lastManifestHash:message.manifestHash});await this.send({type:"ack",sequence:result.lastAppliedSequence,manifestHash:message.manifestHash});if(!result.rejected.length)await this.sendPending();return;}
-    if(message.type==="ack"){this.outboundInFlight=false;await markPeerAck(this.peerId,message.sequence);await updateSyncPeer(this.peerId,{lastManifestHash:message.manifestHash});await this.sendPending();return;}
+    if(message.type==="bootstrap_complete"){
+      const local=await getSyncReplicaSummary();
+      if(!this.receivingBootstrap||message.memoryRoot!==local.memoryRoot)throw new Error("Brain2 bootstrap completion root/state mismatch.");
+      await finalizeSyncBootstrap();
+      this.receivingBootstrap=false;
+      this.inboundBootstrapOrdinal=0;
+      await this.send({type:"hello",summary:await getSyncReplicaSummary()});
+      return;
+    }
+    if(message.type==="mutations"){
+      if(!this.rootVerified||this.merging)throw new Error("Mutation batch arrived before same-root verification.");
+      if(!Array.isArray(message.mutations)||message.mutations.length<1||message.mutations.length>BRAIN2_SYNC_BATCH_LIMIT)throw new Error("Invalid Brain2 mutation batch size.");
+      const sequences=message.mutations.map((item)=>item.originSequence??item.sequence??0);
+      if(!brain2SequenceRangeMatches(sequences,message.fromSequence,message.toSequence))throw new Error("Brain2 mutation batch sequence range mismatch.");
+      const local=await getSyncReplicaSummary();
+      for(const mutation of message.mutations){
+        const verification=await verifyMutationEnvelope(mutation);
+        if(!verification.ok)throw new Error(`Brain2 mutation preflight failed: ${verification.reason??"invalid mutation"}`);
+        if(mutation.memoryRoot!==local.memoryRoot)throw new Error("Brain2 mutation preflight memory-root mismatch.");
+        if((mutation.originDeviceId??mutation.deviceId)!==this.peerId)throw new Error("Brain2 mutation preflight origin mismatch.");
+      }
+      const actualManifest=await hashMutationManifest(message.mutations);
+      if(actualManifest!==message.manifestHash)throw new Error("Brain2 mutation batch manifest mismatch.");
+      const result=await applyReplicatedMutations(this.peerId,message.mutations,"WEBRTC");
+      await updateSyncPeer(this.peerId,{lastManifestHash:message.manifestHash});
+      await this.send({type:"ack",originDeviceId:this.peerId,sequence:result.lastAppliedSequence,manifestHash:message.manifestHash});
+      if(!result.rejected.length)await this.sendPending();
+      return;
+    }
+    if(message.type==="ack"){
+      if(!this.outboundInFlight)return;
+      if(!brain2AckMatchesPending({
+        awaiting:this.outboundInFlight,
+        pendingManifestHash:this.outboundManifestHash,
+        pendingToSequence:this.outboundToSequence,
+        ackManifestHash:message.manifestHash,
+        ackSequence:message.sequence,
+        ackOriginDeviceId:message.originDeviceId,
+        localDeviceId:serverDeviceId(),
+      }))throw new Error("Brain2 ACK does not match the pending mutation batch.");
+      this.outboundInFlight=false;
+      this.outboundManifestHash="";
+      this.outboundToSequence=0;
+      await markPeerAck(this.peerId,message.sequence);
+      await updateSyncPeer(this.peerId,{lastManifestHash:message.manifestHash});
+      await this.sendPending();
+      return;
+    }
+    if(message.type==="sync_request"){
+      if(!this.rootVerified||this.merging)throw new Error("Sync request arrived before same-root verification.");
+      await this.sendPending();
+      return;
+    }
+    if(message.type==="bootstrap_ack")return;
     if(message.type==="ping")return;
+    throw new Error("Unsupported Brain2 P2P message.");
   }
-  close(){this.closed=true;this.rootVerified=false;this.merging=false;this.outboundInFlight=false;this.incomingFrames.clear();try{this.channel?.close();}catch{}try{this.pc.close();}catch{}}
+  close(){this.closed=true;this.rootVerified=false;this.merging=false;this.mergePhase="IDLE";this.mergeReturnOrdinal=0;this.outboundInFlight=false;this.outboundManifestHash="";this.outboundToSequence=0;this.receivingBootstrap=false;this.inboundBootstrapOrdinal=0;this.incomingFrames.clear();try{this.channel?.close();}catch{}try{this.pc.close();}catch{}}
 }
 
 const sessions=new Map<string,PeerSession>();let pollTimer:number|undefined;let unsubscribeDelta:(()=>void)|undefined;let flushTimer:number|undefined;
-async function consumeSignals(){for(const signal of await pullSignals()){let session=sessions.get(signal.fromDeviceId);if(signal.kind==="offer"){session?.close();session=new PeerSession(signal.fromDeviceId,false);sessions.set(signal.fromDeviceId,session);await session.pc.setRemoteDescription(signal.payload);const answer=await session.pc.createAnswer();await session.pc.setLocalDescription(answer);await postSignal(signal.fromDeviceId,"answer",answer);}else if(signal.kind==="answer"&&session){if(session.pc.signalingState==="have-local-offer")await session.pc.setRemoteDescription(signal.payload);}else if(signal.kind==="ice"&&session){try{await session.pc.addIceCandidate(signal.payload);}catch{}}else if(signal.kind==="bye"&&session){session.close();sessions.delete(signal.fromDeviceId);}}}
+const seenSignalIds=new Brain2ReplayWindow();
+async function consumeSignals(){for(const signal of await pullSignals()){if(!seenSignalIds.accept(signal.id))continue;let session=sessions.get(signal.fromDeviceId);if(signal.kind==="offer"){session?.close();session=new PeerSession(signal.fromDeviceId,false);sessions.set(signal.fromDeviceId,session);await session.pc.setRemoteDescription(signal.payload);const answer=await session.pc.createAnswer();await session.pc.setLocalDescription(answer);await postSignal(signal.fromDeviceId,"answer",answer);}else if(signal.kind==="answer"&&session){if(session.pc.signalingState==="have-local-offer")await session.pc.setRemoteDescription(signal.payload);}else if(signal.kind==="ice"&&session){try{await session.pc.addIceCandidate(signal.payload);}catch{}}else if(signal.kind==="bye"&&session){session.close();sessions.delete(signal.fromDeviceId);}}}
 function flushConnectedPeers(){if(flushTimer)return;flushTimer=window.setTimeout(()=>{flushTimer=undefined;for(const session of sessions.values())void session.sendPending().catch((error)=>{void updateSyncPeer(session.peerId,{status:"ERROR",error:error instanceof Error?error.message:String(error)});});},80);}
 export function startBrain2P2P(){if(typeof window==="undefined"||!localToken())return;if(!pollTimer){void consumeSignals();pollTimer=window.setInterval(()=>{void consumeSignals();},3000);}if(!unsubscribeDelta)unsubscribeDelta=subscribeBrain2(flushConnectedPeers);}
-export function stopBrain2P2P(){if(pollTimer){clearInterval(pollTimer);pollTimer=undefined;}if(flushTimer){clearTimeout(flushTimer);flushTimer=undefined;}unsubscribeDelta?.();unsubscribeDelta=undefined;for(const session of sessions.values())session.close();sessions.clear();}
+export function stopBrain2P2P(){if(pollTimer){clearInterval(pollTimer);pollTimer=undefined;}if(flushTimer){clearTimeout(flushTimer);flushTimer=undefined;}unsubscribeDelta?.();unsubscribeDelta=undefined;for(const session of sessions.values())session.close();sessions.clear();seenSignalIds.clear();}
 
 export async function enableBrain2P2P(){const summary=await getSyncReplicaSummary();const deviceId=currentBrain2DeviceId();const body=await api("/api/brain2-sync/devices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId,spaceId:summary.memoryRoot,name:"AI Miner Web",kind:"web"})});localStorage.setItem(TOKEN_KEY,body.deviceToken);localStorage.setItem(SERVER_DEVICE_KEY,body.deviceId);startBrain2P2P();return body;}
 export async function joinBrain2P2P(joinToken:string){const deviceId=currentBrain2DeviceId();const body=await api("/api/brain2-sync/devices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId,name:"AI Miner Web",kind:"web",joinToken})});await adoptMemoryRootIfEmpty(body.spaceId);localStorage.setItem(TOKEN_KEY,body.deviceToken);localStorage.setItem(SERVER_DEVICE_KEY,body.deviceId);startBrain2P2P();return body;}
@@ -198,4 +369,4 @@ export async function createBrain2PairingInvite(){const pair=await createBrain2P
 export function currentBrain2NetworkDeviceId(){return serverDeviceId();}
 export async function listBrain2NetworkDevices(){if(!localToken())return[];try{const body=await api(`/api/brain2-sync/devices?deviceId=${encodeURIComponent(serverDeviceId())}`,{headers:{"X-Brain2-Device-Token":localToken()}});return body.devices||[];}catch(error){if(isUnknownDeviceError(error)){clearLocalCredential();return [];}throw error;}}
 export function brain2P2PEnabled(){return Boolean(typeof window!=="undefined"&&localToken());}
-export async function connectBrain2Peer(peerDeviceId:string){if(peerDeviceId===serverDeviceId())throw new Error("Cannot connect a Brain2 device to itself.");const session=new PeerSession(peerDeviceId,true);sessions.set(peerDeviceId,session);await updateSyncPeer(peerDeviceId,{status:"SIGNALING",transport:"WEBRTC"});const offer=await session.pc.createOffer();await session.pc.setLocalDescription(offer);await postSignal(peerDeviceId,"offer",offer);return session;}
+export async function connectBrain2Peer(peerDeviceId:string){if(peerDeviceId===serverDeviceId())throw new Error("Cannot connect a Brain2 device to itself.");sessions.get(peerDeviceId)?.close();const session=new PeerSession(peerDeviceId,true);sessions.set(peerDeviceId,session);await updateSyncPeer(peerDeviceId,{status:"SIGNALING",transport:"WEBRTC"});const offer=await session.pc.createOffer();await session.pc.setLocalDescription(offer);await postSignal(peerDeviceId,"offer",offer);return session;}

@@ -13,6 +13,28 @@ const nowIso=()=>new Date().toISOString();
 const id=(prefix:string)=>`${prefix}_${randomBytes(12).toString("hex")}`;
 const netlifyPersistent=()=>Boolean(process.env.NETLIFY||process.env.NETLIFY_BLOBS_CONTEXT);
 
+export const BRAIN2_SIGNAL_MAX_PAYLOAD_BYTES=64*1024;
+const BRAIN2_SYNC_DEVICE_ID_RE=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+export function assertBrain2SyncDeviceId(deviceId:string){
+  if(!BRAIN2_SYNC_DEVICE_ID_RE.test(deviceId))throw new Error("Invalid Brain2 sync device id.");
+}
+
+function assertRegistrationInput(input:{deviceId:string;spaceId?:string;name:string;kind:string;joinToken?:string;publicKey?:string}){
+  assertBrain2SyncDeviceId(input.deviceId);
+  if(typeof input.name!=="string"||!input.name.trim()||input.name.length>120)throw new Error("Invalid Brain2 device name.");
+  if(typeof input.kind!=="string"||!input.kind.trim()||input.kind.length>32)throw new Error("Invalid Brain2 device kind.");
+  if(input.spaceId&&input.spaceId.length>256)throw new Error("Brain2 memory root is too long.");
+  if(input.joinToken&&input.joinToken.length>256)throw new Error("Brain2 pairing token is too long.");
+  if(input.publicKey&&input.publicKey.length>4096)throw new Error("Brain2 public key is too long.");
+}
+
+export function brain2SignalPayloadJson(payload:unknown){
+  const json=JSON.stringify(payload??{});
+  if(Buffer.byteLength(json,"utf8")>BRAIN2_SIGNAL_MAX_PAYLOAD_BYTES)throw new Error("Brain2 signaling payload exceeds 64 KiB.");
+  return json;
+}
+
 function dbPath(){const dir=process.env.BRAIN2_SYNC_DATA_DIR||join(process.cwd(),".brain2-sync");mkdirSync(dir,{recursive:true});return join(dir,"brain2-sync.sqlite");}
 function openDb():Db{const holder=globalThis as GlobalSync;if(holder.__brain2SyncDb)return holder.__brain2SyncDb;const{DatabaseSync}=require("node:sqlite") as{DatabaseSync:new(path:string)=>Db};const db=new DatabaseSync(dbPath());db.exec(`
 PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
@@ -34,7 +56,7 @@ async function blobDelete(key:string){const s=await blobStore();await s.delete(k
 
 async function verifyBlobDevice(deviceId:string,token:string,requireTrusted=true){const device=await blobGet<Device>(deviceKey(deviceId));if(!device||device.revoked)throw new Error("Unknown or revoked Brain2 device.");if(requireTrusted&&!device.trusted)throw new Error("Brain2 device is not trusted.");if(!token||sha256(token)!==device.secret_hash)throw new Error("Invalid Brain2 device sync credential.");const updated={...device,last_seen_at:nowIso(),updated_at:nowIso()};await blobSet(deviceKey(deviceId),updated);return updated;}
 function verifyLocalDevice(deviceId:string,token:string,requireTrusted=true){const db=openDb();const device=db.prepare("SELECT * FROM devices WHERE id=?").get(deviceId);if(!device||device.revoked)throw new Error("Unknown or revoked Brain2 device.");if(requireTrusted&&!device.trusted)throw new Error("Brain2 device is not trusted.");if(!token||sha256(token)!==device.secret_hash)throw new Error("Invalid Brain2 device sync credential.");db.prepare("UPDATE devices SET last_seen_at=?,updated_at=? WHERE id=?").run(nowIso(),nowIso(),deviceId);return device as Device;}
-export async function verifySyncDevice(deviceId:string,token:string,requireTrusted=true){return netlifyPersistent()?verifyBlobDevice(deviceId,token,requireTrusted):verifyLocalDevice(deviceId,token,requireTrusted);}
+export async function verifySyncDevice(deviceId:string,token:string,requireTrusted=true){assertBrain2SyncDeviceId(deviceId);return netlifyPersistent()?verifyBlobDevice(deviceId,token,requireTrusted):verifyLocalDevice(deviceId,token,requireTrusted);}
 
 async function validateBlobPair(joinToken:string){const tokenHash=sha256(joinToken);const pair=await blobGet<Pairing>(pairKey(tokenHash));if(!pair||pair.consumed_at||pair.expires_at<nowIso())throw new Error("Pairing token is invalid, expired, or already used.");return{pair,tokenHash};}
 async function consumeBlobPair(tokenHash:string,pair:Pairing){const s=await blobStore();const current=await s.getWithMetadata(pairKey(tokenHash),{type:"json",consistency:"strong"} as any) as any;if(!current?.data||current.data.consumed_at||current.data.expires_at<nowIso())throw new Error("Pairing token is invalid, expired, or already used.");const next={...pair,consumed_at:nowIso()};const result=await s.setJSON(pairKey(tokenHash),next,{onlyIfMatch:current.etag} as any);if(result&&result.modified===false)throw new Error("Pairing token was already consumed by another device.");}
@@ -52,14 +74,33 @@ async function registerBlob(input:{deviceId:string;spaceId?:string;name:string;k
   const deviceToken=randomBytes(32).toString("base64url"),t=nowIso();const device:Device={id:input.deviceId,space_id:spaceId,name:input.name,kind:input.kind,trusted:1,revoked:0,secret_hash:sha256(deviceToken),public_key:input.publicKey||null,last_seen_at:t,created_at:t,updated_at:t};const result=await blobSet(deviceKey(input.deviceId),device,{onlyIfNew:true});if(result&&result.modified===false)throw new Error("Device registration raced with another request. Retry pairing.");if(pairInfo)await consumeBlobPair(pairInfo.tokenHash,pairInfo.pair);return{deviceId:input.deviceId,spaceId,deviceToken,trusted:true,createdAt:t};
 }
 function registerLocal(input:{deviceId:string;spaceId?:string;name:string;kind:string;joinToken?:string;publicKey?:string}){const db=openDb();cleanupLocal(db);const existing=db.prepare("SELECT * FROM devices WHERE id=?").get(input.deviceId);let spaceId=input.spaceId?.trim()||"";let pair:any=null,tokenHash="";if(input.joinToken){tokenHash=sha256(input.joinToken);pair=db.prepare("SELECT * FROM pairing_tokens WHERE token_hash=? AND consumed_at IS NULL AND expires_at>=?").get(tokenHash,nowIso());if(!pair)throw new Error("Pairing token is invalid, expired, or already used.");spaceId=pair.space_id;}if(!spaceId)throw new Error("A Brain2 memory root or pairing token is required.");if(existing){if(!pair)throw new Error("Device already registered on this signaling server. Reuse its existing local credential or join again with a fresh pairing QR.");if(existing.space_id!==spaceId)throw new Error("This Brain2 device is already bound to a different memory root.");const deviceToken=randomBytes(32).toString("base64url"),t=nowIso();db.prepare("UPDATE devices SET name=?,kind=?,trusted=1,revoked=0,secret_hash=?,public_key=?,last_seen_at=?,updated_at=? WHERE id=?").run(input.name,input.kind,sha256(deviceToken),input.publicKey||existing.public_key||null,t,t,input.deviceId);db.prepare("UPDATE pairing_tokens SET consumed_at=? WHERE token_hash=?").run(t,tokenHash);return{deviceId:input.deviceId,spaceId,deviceToken,trusted:true,createdAt:existing.created_at,repaired:true};}const trustedCount=Number(db.prepare("SELECT COUNT(*) AS n FROM devices WHERE space_id=? AND trusted=1 AND revoked=0").get(spaceId)?.n||0);if(trustedCount>0&&!pair)throw new Error("This Brain2 memory already has trusted devices. Join with a single-use pairing token.");const deviceToken=randomBytes(32).toString("base64url"),t=nowIso();db.prepare("INSERT INTO devices(id,space_id,name,kind,trusted,revoked,secret_hash,public_key,last_seen_at,created_at,updated_at) VALUES (?,?,?,?,1,0,?,?,?,?,?)").run(input.deviceId,spaceId,input.name,input.kind,sha256(deviceToken),input.publicKey||null,t,t,t);if(pair)db.prepare("UPDATE pairing_tokens SET consumed_at=? WHERE token_hash=?").run(t,tokenHash);return{deviceId:input.deviceId,spaceId,deviceToken,trusted:true,createdAt:t};}
-export async function registerSyncDevice(input:{deviceId:string;spaceId?:string;name:string;kind:string;joinToken?:string;publicKey?:string}){return netlifyPersistent()?registerBlob(input):registerLocal(input);}
+export async function registerSyncDevice(input:{deviceId:string;spaceId?:string;name:string;kind:string;joinToken?:string;publicKey?:string}){assertRegistrationInput(input);return netlifyPersistent()?registerBlob(input):registerLocal(input);}
 
 export async function createPairingToken(deviceId:string,deviceToken:string){const device=await verifySyncDevice(deviceId,deviceToken,true);const token=randomBytes(24).toString("base64url"),t=nowIso(),expires=new Date(Date.now()+5*60_000).toISOString();const pair:Pairing={token_hash:sha256(token),space_id:device.space_id,issued_by:deviceId,expires_at:expires,consumed_at:null,created_at:t};if(netlifyPersistent())await blobSet(pairKey(pair.token_hash),pair,{onlyIfNew:true});else openDb().prepare("INSERT INTO pairing_tokens(token_hash,space_id,issued_by,expires_at,consumed_at,created_at) VALUES (?,?,?,?,NULL,?)").run(pair.token_hash,pair.space_id,deviceId,expires,t);return{token,spaceId:device.space_id,expiresAt:expires};}
 
 export async function listSyncDevices(deviceId:string,deviceToken:string){const device=await verifySyncDevice(deviceId,deviceToken,true);if(!netlifyPersistent())return openDb().prepare("SELECT id,space_id,name,kind,trusted,revoked,public_key,last_seen_at,created_at,updated_at FROM devices WHERE space_id=? ORDER BY revoked,last_seen_at DESC").all(device.space_id);const rows:Device[]=[];for(const item of await blobList("devices/")){const d=await blobGet<Device>(item.key);if(d?.space_id===device.space_id)rows.push(d);}return rows.sort((a,b)=>(a.revoked-b.revoked)||b.last_seen_at.localeCompare(a.last_seen_at)).map(({secret_hash,...rest})=>rest);}
 
 const SIGNAL_KINDS=new Set(["offer","answer","ice","bye"]);
-export async function postSyncSignal(input:{fromDeviceId:string;deviceToken:string;toDeviceId:string;kind:string;payload:unknown;ttlSeconds?:number}){const from=await verifySyncDevice(input.fromDeviceId,input.deviceToken,true);const target=netlifyPersistent()?await blobGet<Device>(deviceKey(input.toDeviceId)):openDb().prepare("SELECT * FROM devices WHERE id=?").get(input.toDeviceId) as Device;if(!target||target.revoked||!target.trusted||target.space_id!==from.space_id)throw new Error("Target device is not an authorized replica of this Brain2 memory.");if(!SIGNAL_KINDS.has(input.kind))throw new Error("Unsupported Brain2 P2P signal kind.");const ttl=Math.min(Math.max(Number(input.ttlSeconds)||120,15),600),created=nowIso(),expires=new Date(Date.now()+ttl*1000).toISOString(),signalId=id("sig");const row:SignalRow={id:signalId,space_id:from.space_id,from_device_id:input.fromDeviceId,to_device_id:input.toDeviceId,kind:input.kind,payload_json:JSON.stringify(input.payload??{}),expires_at:expires,consumed_at:null,created_at:created};if(netlifyPersistent())await blobSet(signalKey(input.toDeviceId,created,signalId),row,{onlyIfNew:true});else openDb().prepare("INSERT INTO signals(id,space_id,from_device_id,to_device_id,kind,payload_json,expires_at,consumed_at,created_at) VALUES (?,?,?,?,?,?,?,NULL,?)").run(signalId,from.space_id,input.fromDeviceId,input.toDeviceId,input.kind,row.payload_json,expires,created);return{id:signalId,fromDeviceId:input.fromDeviceId,toDeviceId:input.toDeviceId,kind:input.kind,expiresAt:expires,createdAt:created};}
+export async function postSyncSignal(input:{fromDeviceId:string;deviceToken:string;toDeviceId:string;kind:string;payload:unknown;ttlSeconds?:number}){
+  assertBrain2SyncDeviceId(input.fromDeviceId);
+  assertBrain2SyncDeviceId(input.toDeviceId);
+  if(input.fromDeviceId===input.toDeviceId)throw new Error("Brain2 P2P signaling to self is not allowed.");
+  const from=await verifySyncDevice(input.fromDeviceId,input.deviceToken,true);
+  const target=netlifyPersistent()
+    ?await blobGet<Device>(deviceKey(input.toDeviceId))
+    :openDb().prepare("SELECT * FROM devices WHERE id=?").get(input.toDeviceId) as Device;
+  if(!target||target.revoked||!target.trusted||target.space_id!==from.space_id)throw new Error("Target device is not an authorized replica of this Brain2 memory.");
+  if(!SIGNAL_KINDS.has(input.kind))throw new Error("Unsupported Brain2 P2P signal kind.");
+  const payloadJson=brain2SignalPayloadJson(input.payload);
+  const ttl=Math.min(Math.max(Number(input.ttlSeconds)||120,15),600);
+  const created=nowIso();
+  const expires=new Date(Date.now()+ttl*1000).toISOString();
+  const signalId=id("sig");
+  const row:SignalRow={id:signalId,space_id:from.space_id,from_device_id:input.fromDeviceId,to_device_id:input.toDeviceId,kind:input.kind,payload_json:payloadJson,expires_at:expires,consumed_at:null,created_at:created};
+  if(netlifyPersistent())await blobSet(signalKey(input.toDeviceId,created,signalId),row,{onlyIfNew:true});
+  else openDb().prepare("INSERT INTO signals(id,space_id,from_device_id,to_device_id,kind,payload_json,expires_at,consumed_at,created_at) VALUES (?,?,?,?,?,?,?,NULL,?)").run(signalId,from.space_id,input.fromDeviceId,input.toDeviceId,input.kind,row.payload_json,expires,created);
+  return{id:signalId,fromDeviceId:input.fromDeviceId,toDeviceId:input.toDeviceId,kind:input.kind,expiresAt:expires,createdAt:created};
+}
 
 export async function pullSyncSignals(input:{deviceId:string;deviceToken:string;consume?:boolean;limit?:number}){const device=await verifySyncDevice(input.deviceId,input.deviceToken,true),limit=Math.min(Math.max(Number(input.limit)||100,1),500),t=nowIso();if(!netlifyPersistent()){cleanupLocal(openDb());const rows=openDb().prepare("SELECT * FROM signals WHERE space_id=? AND to_device_id=? AND consumed_at IS NULL AND expires_at>=? ORDER BY created_at ASC LIMIT ?").all(device.space_id,input.deviceId,t,limit);if(input.consume!==false&&rows.length){const consumed=nowIso(),stmt=openDb().prepare("UPDATE signals SET consumed_at=? WHERE id=? AND consumed_at IS NULL");for(const row of rows)stmt.run(consumed,row.id);}return rows.map((row:any)=>({id:row.id,fromDeviceId:row.from_device_id,toDeviceId:row.to_device_id,kind:row.kind,payload:JSON.parse(row.payload_json),expiresAt:row.expires_at,createdAt:row.created_at}));}
   const found:Array<{key:string;row:SignalRow}>=[];for(const item of await blobList(`signals/${input.deviceId}/`)){const row=await blobGet<SignalRow>(item.key);if(!row)continue;if(row.consumed_at||row.expires_at<t){await blobDelete(item.key);continue;}if(row.space_id===device.space_id)found.push({key:item.key,row});}found.sort((a,b)=>a.row.created_at.localeCompare(b.row.created_at));const chosen=found.slice(0,limit);if(input.consume!==false){for(const item of chosen)await blobDelete(item.key);}return chosen.map(({row})=>({id:row.id,fromDeviceId:row.from_device_id,toDeviceId:row.to_device_id,kind:row.kind,payload:JSON.parse(row.payload_json),expiresAt:row.expires_at,createdAt:row.created_at}));}
