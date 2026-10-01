@@ -1,6 +1,8 @@
 "use client";
 
 import { buildBrain2G11SyncProof } from "./g11SyncProof";
+import { buildGlobalContextPackage, buildGlobalContextResumeCapsule, findAntiReinvention, renderGlobalContextOutbound } from "./globalContext";
+import { compileB2Job } from "./jobs";
 import {
   addVerification,
   bootBrain2,
@@ -211,6 +213,28 @@ async function dispatch(method: string, params: Record<string, unknown>) {
   if (method === "search") return bridgeSearch(params);
 
   if (method === "syncProof") return buildBrain2G11SyncProof();
+
+  if (method === "resumeCapsule") {
+    const project = resolveProject(params.project);
+    if (!project) throw new Error(`Project not found in AI Miner: ${asString(params.project)}`);
+    return buildGlobalContextResumeCapsule(snapshot, project.id);
+  }
+
+  if (method === "antiReinvention") {
+    const query = asString(params.query);
+    const project = asString(params.project) ? resolveProject(params.project) : undefined;
+    return { query, projectId: project?.id, hits: findAntiReinvention(snapshot, query, project?.id, Math.max(1, Math.min(20, asInt(params.limit, 6)))), memoryRoot: snapshot.memoryRoot, snapshotVersion: snapshot.version };
+  }
+
+  if (method === "contextPackage") {
+    const task = asString(params.task);
+    const project = resolveProject(params.project);
+    if (!project) throw new Error(`Project not found in AI Miner: ${asString(params.project)}`);
+    const limit = Math.max(4, Math.min(64, asInt(params.evidenceLimit, 24)));
+    const job = await compileB2Job(snapshot, task, project.id, limit);
+    const pkg = await buildGlobalContextPackage(snapshot, task, project.id, job);
+    return { package: pkg, outbound: renderGlobalContextOutbound(pkg), antiReinvention: findAntiReinvention(snapshot, task, project.id, 6), memoryRoot: snapshot.memoryRoot, snapshotVersion: snapshot.version };
+  }
 
   if (method === "inventory") {
     return {

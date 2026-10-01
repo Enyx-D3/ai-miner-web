@@ -6,7 +6,7 @@ import process from "node:process";
 const BASE_URL = process.env.BRAIN2_PROFILE_BASE_URL ?? "http://127.0.0.1:3100";
 const EDGE_PATH = process.env.BRAIN2_PROFILE_BROWSER ?? "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const DB_NAME = "brain2-ai-miner";
-const DB_VERSION = 11;
+const DB_VERSION = 12;
 const HOT_MESSAGE_LIMIT = 600;
 const HOT_ATOM_LIMIT = 1200;
 
@@ -318,7 +318,7 @@ async function openSeededPage(browser, seed, path) {
 async function readTelemetry(page) {
   return page.evaluate(async () => {
     const records = await new Promise((resolve, reject) => {
-      const request = indexedDB.open("brain2-ai-miner", 11);
+      const request = indexedDB.open("brain2-ai-miner", 12);
       request.onsuccess = () => {
         const db = request.result;
         const tx = db.transaction("retrievalTelemetry", "readonly");

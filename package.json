@@ -51,7 +51,8 @@
     "test:g12-web-security": "node scripts/test-g12-web-security.mjs",
     "test:g12-secret-hygiene": "node scripts/test-g12-secret-hygiene.mjs",
     "security:audit": "npm audit --omit=dev --audit-level=high",
-    "test:g12-dependency-security": "node scripts/test-g12-dependency-security.mjs"
+    "test:g12-dependency-security": "node scripts/test-g12-dependency-security.mjs",
+    "check:global-context": "node scripts/check-global-context-gap-fill.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

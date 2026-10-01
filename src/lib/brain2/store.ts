@@ -65,7 +65,7 @@ import { journalNeedsRecovery, recoverInterruptedJournal } from "./recovery";
 import type { ProjectIntelligenceWorkerEvent, ProjectIntelligenceWorkerRequest } from "@/workers/brain2ProjectIntelligence.worker";
 
 const DB_NAME = "brain2-ai-miner";
-const DB_VERSION = 11;
+const DB_VERSION = 12;
 const HOT_MESSAGE_LIMIT = 600;
 const HOT_ATOM_LIMIT = 1200;
 const RECENT_EVENT_LIMIT = 800;
@@ -73,7 +73,7 @@ const SEARCH_INDEX_BATCH = 500;
 const CALCULATED_PROJECT_RISK_TICK_VERSION = "B2_CALCULATED_PROJECT_RISK_TICK_V1";
 const CALCULATED_PROJECT_RISK_WAKE_PREFIX = `brain2:auto-project-risk:${CALCULATED_PROJECT_RISK_TICK_VERSION}`;
 const TABLES = [
-  "sources","conversations","messages","atoms","truths","projects","ticks","decisions","patterns","experiments","missions","checkpoints","mutations","devices","verifications","transactions","journals","contextVaultRuns","patternTests","portableExpertise","compiledCapabilities","reasoningTrajectories","failureMemories","derivedArtifacts","databoxes","retrievalTelemetry","evidenceBlocks","searchDocs","syncPeers","syncConflicts","meta",
+  "sources","conversations","messages","atoms","truths","projects","ticks","decisions","patterns","experiments","missions","checkpoints","mutations","devices","verifications","transactions","journals","contextVaultRuns","patternTests","portableExpertise","compiledCapabilities","reasoningTrajectories","failureMemories","derivedArtifacts","databoxes","retrievalTelemetry","evidenceBlocks","mrsRuns","intelligenceSnapshots","wikiSnapshots","notebookSnapshots","searchDocs","syncPeers","syncConflicts","meta",
 ] as const;
 
 type TableName = typeof TABLES[number];
@@ -1166,7 +1166,7 @@ export async function bootBrain2(): Promise<void> {
   return bootPromise;
 }
 
-const SYNC_TABLES: SyncTableName[] = ["sources","conversations","messages","atoms","truths","projects","ticks","decisions","patterns","experiments","missions","checkpoints","verifications","transactions","patternTests","portableExpertise","compiledCapabilities","reasoningTrajectories","failureMemories","databoxes","evidenceBlocks"];
+const SYNC_TABLES: SyncTableName[] = ["sources","conversations","messages","atoms","truths","projects","ticks","decisions","patterns","experiments","missions","checkpoints","verifications","transactions","patternTests","portableExpertise","compiledCapabilities","reasoningTrajectories","failureMemories","databoxes","evidenceBlocks","mrsRuns","intelligenceSnapshots","wikiSnapshots","notebookSnapshots"];
 const SYNC_TABLE_SET = new Set<string>(SYNC_TABLES);
 
 function deltaPayload(primaryTable:SyncTableName,writes:MutationDeltaPayload["writes"],deletes?:MutationDeltaPayload["deletes"]):MutationDeltaPayload{
@@ -1923,8 +1923,8 @@ export async function syncCalculatedProjectRiskTicks(projectIds?:string[]):Promi
   return tickWrites;
 }
 
-export async function createTick(input: Pick<TickRecord, "title" | "detail" | "priority"> & { projectId?: string; wakeCondition?: string; evidenceAtomIds?: string[] }): Promise<TickRecord> {
-  await bootBrain2(); const createdAt=now(); const id=await canonicalId("tick",input.projectId,input.title,createdAt); const tick:TickRecord={id,projectId:input.projectId,title:input.title,detail:input.detail,priority:input.priority,status:"OPEN",createdAt,updatedAt:createdAt,wakeCondition:input.wakeCondition,evidenceAtomIds:input.evidenceAtomIds??[]};
+export async function createTick(input: Pick<TickRecord, "title" | "detail" | "priority"> & { projectId?: string; wakeCondition?: string; evidenceAtomIds?: string[]; actionType?: TickRecord["actionType"]; blockingScope?: string[]; permissionScope?: string; contextPackageHash?: string }): Promise<TickRecord> {
+  await bootBrain2(); const createdAt=now(); const id=await canonicalId("tick",input.projectId,input.title,createdAt); const tick:TickRecord={id,projectId:input.projectId,title:input.title,detail:input.detail,priority:input.priority,status:"OPEN",createdAt,updatedAt:createdAt,wakeCondition:input.wakeCondition,evidenceAtomIds:input.evidenceAtomIds??[],actionType:input.actionType,blockingScope:input.blockingScope,permissionScope:input.permissionScope,contextPackageHash:input.contextPackageHash};
   const project=tick.projectId?snapshot.projects.find((item)=>item.id===tick.projectId):undefined;
   const nextProject=project?{...project,openTickIds:[...new Set([...project.openTickIds,tick.id])],updatedAt:now()}:undefined;
   const payload=deltaPayload("ticks",{ticks:[tick],...(nextProject?{projects:[nextProject]}:{})});
@@ -2405,7 +2405,7 @@ async function buildB2MPayload(){
 export async function exportB2M(passphrase?:string):Promise<Blob>{return runBrain2ForegroundTask("B2M_EXPORT",async()=>{await bootBrain2();const startedAt=performanceNow();const payload=JSON.stringify(await buildB2MPayload());if(!passphrase){await recordResponsivenessTelemetry("b2m.export_total",performanceNow()-startedAt,{encrypted:false,sizeBytes:payload.length});return new Blob([payload],{type:"application/vnd.brain2.b2m+json"});}const salt=crypto.getRandomValues(new Uint8Array(16));const iv=crypto.getRandomValues(new Uint8Array(12));const baseKey=await crypto.subtle.importKey("raw",new TextEncoder().encode(passphrase),"PBKDF2",false,["deriveKey"]);const key=await crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations:200000},baseKey,{name:"AES-GCM",length:256},false,["encrypt"]);const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(payload));const encoded={format:"B2M-ENCRYPTED",version:4,kdf:"PBKDF2-SHA256-200000",cipher:"AES-256-GCM",salt:btoa(String.fromCharCode(...salt)),iv:btoa(String.fromCharCode(...iv)),data:btoa(String.fromCharCode(...new Uint8Array(ciphertext)))};const out=JSON.stringify(encoded);await recordResponsivenessTelemetry("b2m.export_total",performanceNow()-startedAt,{encrypted:true,sizeBytes:out.length});return new Blob([out],{type:"application/vnd.brain2.b2m+json"});});}
 function fromBase64(value:string){return Uint8Array.from(atob(value),(char)=>char.charCodeAt(0));}
 export async function importB2M(file:File,passphrase?:string):Promise<void>{return runBrain2ForegroundTask("B2M_IMPORT",async()=>{await bootBrain2();const startedAt=performanceNow();const raw=JSON.parse(await file.text());let payload=raw;if(raw.format==="B2M-ENCRYPTED"){if(!passphrase)throw new Error("This .B2M is encrypted. Enter its passphrase.");const salt=fromBase64(raw.salt);const iv=fromBase64(raw.iv);const cipher=fromBase64(raw.data);const baseKey=await crypto.subtle.importKey("raw",new TextEncoder().encode(passphrase),"PBKDF2",false,["deriveKey"]);const key=await crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations:200000},baseKey,{name:"AES-GCM",length:256},false,["decrypt"]);const clear=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,cipher);payload=JSON.parse(new TextDecoder().decode(clear));}
-  if(payload.format!=="B2M"||!payload.tables)throw new Error("Not a supported Brain2 .B2M package.");if(snapshot.memoryRoot&&payload.memoryRoot&&snapshot.memoryRoot!==payload.memoryRoot&&snapshot.storage.totalMessages)throw new Error("Memory-root mismatch. Import into an empty Brain2 profile or use a matching .B2M root.");if(payload.manifest?.tableHashes){for(const [table,expected] of Object.entries(payload.manifest.tableHashes as Record<string,string>)){const actual=await sha256(JSON.stringify(payload.tables[table]??[]));if(actual!==expected)throw new Error(`.B2M integrity check failed for ${table}.`);}}
+  if(payload.format!=="B2M"||!payload.tables)throw new Error("Not a supported Brain2 .B2M package.");payload.tables={...payload.tables};if(!Array.isArray(payload.tables.compiledCapabilities)&&Array.isArray(payload.tables.capabilities))payload.tables.compiledCapabilities=payload.tables.capabilities;if(!Array.isArray(payload.tables.failureMemories)&&Array.isArray(payload.tables.failureMemory))payload.tables.failureMemories=payload.tables.failureMemory;if(snapshot.memoryRoot&&payload.memoryRoot&&snapshot.memoryRoot!==payload.memoryRoot&&snapshot.storage.totalMessages)throw new Error("Memory-root mismatch. Import into an empty Brain2 profile or use a matching .B2M root.");if(payload.manifest?.tableHashes){for(const [table,expected] of Object.entries(payload.manifest.tableHashes as Record<string,string>)){const actual=await sha256(JSON.stringify(payload.tables[table]??[]));if(actual!==expected)throw new Error(`.B2M integrity check failed for ${table}.`);}}
   const manifest=payload.manifest as Record<string,unknown>|undefined;
   if(manifest?.currentTruthRoot||manifest?.providerNeutralCurrentTruthRoot||manifest?.sourceEvidenceRoot){
     const actual=await buildB2MIntegrity(payload.tables as Record<string,unknown>);

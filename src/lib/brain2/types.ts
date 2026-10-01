@@ -148,7 +148,8 @@ export type ProjectRecord = {
   schemaVersion?: number;
 };
 
-export type TickRecord = { id: string; projectId?: string; title: string; detail: string; status: TickStatus; priority: "LOW" | "MEDIUM" | "HIGH"; createdAt: string; updatedAt: string; resolution?: string; wakeCondition?: string; evidenceAtomIds: string[] };
+export type TickActionType = "APPROVE" | "DECIDE" | "CONFLICT" | "UNCERTAIN" | "VERIFY" | "BLOCKER" | "RESULT" | "CAPTURE" | "CONTINUE" | "RESUME";
+export type TickRecord = { id: string; projectId?: string; title: string; detail: string; status: TickStatus; priority: "LOW" | "MEDIUM" | "HIGH"; createdAt: string; updatedAt: string; resolution?: string; wakeCondition?: string; evidenceAtomIds: string[]; actionType?: TickActionType; blockingScope?: string[]; permissionScope?: string; contextPackageHash?: string };
 export type DecisionRecord = { id: string; projectId: string; atomId: string; title: string; status: TruthStatus; createdAt?: string; evidenceAtomIds: string[] };
 export type PatternRecord = {
   id: string;
@@ -439,7 +440,7 @@ export type RetrievalTelemetryRecord = {
 export type ExperimentRecord = { id: string; projectId?: string; title: string; hypothesis: string; status: ExperimentStatus; result?: string; createdAt: string; updatedAt: string; evidenceAtomIds: string[]; validationStatus?: "UNVALIDATED" | "PASS" | "FAIL"; validationDetail?: string; validatedAt?: string };
 export type MissionRecord = { id: string; projectId?: string; title: string; objective: string; status: MissionStatus; createdAt: string; updatedAt: string; checkpointIds: string[]; tickIds: string[]; runtimeCanon?: string; writerId?: string };
 export type CheckpointRecord = { id: string; missionId: string; parentId?: string; state: string; note: string; createdAt: string; hash: string; validationStatus?: "PASS" | "FAIL" | "PENDING"; regressionStatus?: "PASS" | "FAIL" | "PENDING"; commitStatus?: "PREPARED" | "COMMITTED"; reopenedHash?: string };
-export type SyncTableName = "sources" | "conversations" | "messages" | "atoms" | "truths" | "projects" | "ticks" | "decisions" | "patterns" | "experiments" | "missions" | "checkpoints" | "verifications" | "transactions" | "patternTests" | "portableExpertise" | "compiledCapabilities" | "reasoningTrajectories" | "failureMemories" | "databoxes" | "evidenceBlocks";
+export type SyncTableName = "sources" | "conversations" | "messages" | "atoms" | "truths" | "projects" | "ticks" | "decisions" | "patterns" | "experiments" | "missions" | "checkpoints" | "verifications" | "transactions" | "patternTests" | "portableExpertise" | "compiledCapabilities" | "reasoningTrajectories" | "failureMemories" | "databoxes" | "evidenceBlocks" | "mrsRuns" | "intelligenceSnapshots" | "wikiSnapshots" | "notebookSnapshots";
 export type MutationDeltaPayload = {
   version: 1;
   operation: "UPSERT" | "UPSERT_BUNDLE" | "DELETE";
