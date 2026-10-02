@@ -49,6 +49,7 @@ export function parseRuntimeExecutionEvidence(value: unknown): RuntimeExecutionE
   if (execution.jobId !== runtime.runtimeJobId) throw new Error("Runtime job identity mismatch.");
   if (execution.state !== "COMPLETED") throw new Error("Only completed runtime executions can become evidence.");
   if (!isRecord(execution.verifierResult) || execution.verifierResult.verdict !== "PASS") throw new Error("Runtime verifier must PASS before canonical evidence commit.");
+  if (execution.verifierResult.authorization !== "ALLOW") throw new Error("Runtime verifier must explicitly return R1 ALLOW before canonical evidence commit.");
   if (!stringArray(execution.inputHashes) || !stringArray(execution.outputHashes)) throw new Error("Runtime execution hashes are required.");
   const resultEvidence = stringArray(value.evidenceIds) ? new Set(value.evidenceIds) : new Set<string>();
   for (const evidenceId of runtime.evidenceIds) {

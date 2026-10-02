@@ -52,7 +52,10 @@
     "test:g12-secret-hygiene": "node scripts/test-g12-secret-hygiene.mjs",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "test:g12-dependency-security": "node scripts/test-g12-dependency-security.mjs",
-    "check:global-context": "node scripts/check-global-context-gap-fill.mjs"
+    "check:global-context": "node scripts/check-global-context-gap-fill.mjs",
+    "check:global-context-v2": "node scripts/check-global-context-v2.mjs",
+    "test:gc-cp001": "node scripts/test-gc-cp001.mjs",
+    "check:extension-parity": "node scripts/check-extension-upstream-parity.mjs extension ../ai-miner-extention"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

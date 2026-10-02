@@ -505,6 +505,15 @@ export type ContextVaultRunRecord = {
   adapterVersion: string;
 };
 
+export type SharedStateSnapshotRecord = {
+  id: string;
+  projectId: string;
+  createdAt?: string;
+  updatedAt?: string;
+  schemaVersion?: number;
+  [key: string]: unknown;
+};
+
 export type Brain2Snapshot = {
   sources: SourceRecord[];
   conversations: ConversationRecord[];
@@ -533,6 +542,10 @@ export type Brain2Snapshot = {
   databoxes: DataboxRecord[];
   retrievalTelemetry: RetrievalTelemetryRecord[];
   evidenceBlocks: EvidenceBlockRecord[];
+  mrsRuns: SharedStateSnapshotRecord[];
+  intelligenceSnapshots: SharedStateSnapshotRecord[];
+  wikiSnapshots: SharedStateSnapshotRecord[];
+  notebookSnapshots: SharedStateSnapshotRecord[];
   syncPeers: SyncPeerRecord[];
   syncConflicts: SyncConflictRecord[];
   storage: Brain2StorageState;

@@ -38,6 +38,7 @@
         "https://gemini.google.com/*"
       ],
       "js": [
+        "provider_adapters.js",
         "capture.js"
       ],
       "run_at": "document_idle"

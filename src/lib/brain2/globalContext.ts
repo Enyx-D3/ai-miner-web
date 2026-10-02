@@ -8,6 +8,7 @@ import type {
   TruthRecord,
 } from "./types";
 import type { B2JobPackage } from "./jobs";
+import { issueUserR1Allow, requireR1Allow } from "./r1Authority";
 
 export type GlobalContextResumeCapsule = {
   format: "GLOBAL_CONTEXT_RESUME";
@@ -432,6 +433,12 @@ export async function buildGlobalContextHandoffReceipt(input:{
   sourceSurface: "web"|"android"|"extension"|"mcp";
 }) {
   const outboundHash = await sha256(input.outbound);
+  const r1Authority=requireR1Allow(await issueUserR1Allow({
+    action:"GLOBAL_CONTEXT_HANDOFF",
+    scope:`${input.pkg.projectId}:${input.destination}:${input.pkg.packageHash}`,
+    reason:"User explicitly approved this exact bounded outbound package.",
+    evidenceRefs:[input.pkg.packageHash,outboundHash],
+  }),"GLOBAL_CONTEXT_HANDOFF",`${input.pkg.projectId}:${input.destination}:${input.pkg.packageHash}`);
   const approvedAt = new Date().toISOString();
   const stable = {
     format: "GLOBAL_CONTEXT_HANDOFF",
@@ -443,6 +450,8 @@ export async function buildGlobalContextHandoffReceipt(input:{
     outboundHash,
     sourceSurface: input.sourceSurface,
     consent: "EXPLICIT_USER_ACTION",
+    r1Signal:r1Authority.signal,
+    r1Hash:r1Authority.hash,
   };
   return {
     ...stable,

@@ -3,7 +3,7 @@ const read=(p)=>readFileSync(new URL(`../${p}`,import.meta.url),"utf8");
 const required=[
   "src/lib/brain2/syncProtocol.ts","src/lib/brain2/p2pSync.ts","src/lib/brain2/qrCode.ts","src/server/brain2/syncServer.ts","src/components/brain2/Brain2PairingQr.tsx","src/components/brain2/Brain2Provider.tsx",
   "src/app/api/brain2-sync/devices/route.ts","src/app/api/brain2-sync/pairing/route.ts","src/app/api/brain2-sync/signals/route.ts",
-  "extension/bridge.js","extension/service_worker.js","extension/popup.js",
+  "extension/bridge.js","extension/service_worker.js","extension/sidepanel.js",
   "brain2-network/repeater-go/internal/api/server.go","brain2-network/fabric-sdk-go/fabric.go","brain2-network/fabric-sdk-go/planner.go"
 ];
 for(const p of required)if(!existsSync(new URL(`../${p}`,import.meta.url)))throw new Error(`Missing V8 sync artifact: ${p}`);

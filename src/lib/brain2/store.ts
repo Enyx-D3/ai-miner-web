@@ -57,6 +57,7 @@ import type {
   RetrievalTelemetryRecord,
   ProjectRecord,
   SourceRecord,
+  SharedStateSnapshotRecord,
   TickRecord,
   TruthRecord,
   VerificationRecord,
@@ -147,7 +148,7 @@ const emptyStorage: Brain2StorageState = {
   totalMessages:0,totalAtoms:0,totalTruths:0,totalConversations:0,totalEvidenceBlocks:0,indexedDocuments:0,hotMessages:0,hotAtoms:0,retrievalIndexStatus:"EMPTY",retrievalIndexProgress:0,bootMode:"BOUNDED_HOT_SET",
 };
 const emptySnapshot: Brain2Snapshot = {
-  sources: [], conversations: [], messages: [], atoms: [], truths: [], projects: [], ticks: [], decisions: [], patterns: [], experiments: [], missions: [], checkpoints: [], mutations: [], devices: [], verifications: [], transactions: [], journals: [], contextVaultRuns: [], patternTests: [], portableExpertise: [], compiledCapabilities: [], reasoningTrajectories: [], failureMemories: [], derivedArtifacts: [], databoxes: [], retrievalTelemetry: [], evidenceBlocks: [], syncPeers: [], syncConflicts: [], storage:{...emptyStorage}, memoryRoot: "", loaded: false, version: 0,
+  sources: [], conversations: [], messages: [], atoms: [], truths: [], projects: [], ticks: [], decisions: [], patterns: [], experiments: [], missions: [], checkpoints: [], mutations: [], devices: [], verifications: [], transactions: [], journals: [], contextVaultRuns: [], patternTests: [], portableExpertise: [], compiledCapabilities: [], reasoningTrajectories: [], failureMemories: [], derivedArtifacts: [], databoxes: [], retrievalTelemetry: [], evidenceBlocks: [], mrsRuns: [], intelligenceSnapshots: [], wikiSnapshots: [], notebookSnapshots: [], syncPeers: [], syncConflicts: [], storage:{...emptyStorage}, memoryRoot: "", loaded: false, version: 0,
 };
 
 let snapshot: Brain2Snapshot = emptySnapshot;
@@ -554,6 +555,10 @@ async function hydrateSecondaryBootTables(): Promise<void> {
       compiledCapabilities,
       reasoningTrajectories,
       failureMemories,
+      mrsRuns,
+      intelligenceSnapshots,
+      wikiSnapshots,
+      notebookSnapshots,
     ] = await Promise.all([
       all<DecisionRecord>("decisions"),
       all<PatternRecord>("patterns"),
@@ -567,6 +572,10 @@ async function hydrateSecondaryBootTables(): Promise<void> {
       all<CompiledCapabilityRecord>("compiledCapabilities"),
       all<ReasoningTrajectoryRecord>("reasoningTrajectories"),
       all<FailureMemoryRecord>("failureMemories"),
+      all<SharedStateSnapshotRecord>("mrsRuns"),
+      all<SharedStateSnapshotRecord>("intelligenceSnapshots"),
+      all<SharedStateSnapshotRecord>("wikiSnapshots"),
+      all<SharedStateSnapshotRecord>("notebookSnapshots"),
     ]);
     snapshot = {
       ...snapshot,
@@ -582,6 +591,10 @@ async function hydrateSecondaryBootTables(): Promise<void> {
       compiledCapabilities,
       reasoningTrajectories,
       failureMemories,
+      mrsRuns,
+      intelligenceSnapshots,
+      wikiSnapshots,
+      notebookSnapshots,
     };
     rebuildIngestionIndexes();
     setSnapshot({
@@ -597,6 +610,10 @@ async function hydrateSecondaryBootTables(): Promise<void> {
       compiledCapabilities: snapshot.compiledCapabilities,
       reasoningTrajectories: snapshot.reasoningTrajectories,
       failureMemories: snapshot.failureMemories,
+      mrsRuns: snapshot.mrsRuns,
+      intelligenceSnapshots: snapshot.intelligenceSnapshots,
+      wikiSnapshots: snapshot.wikiSnapshots,
+      notebookSnapshots: snapshot.notebookSnapshots,
     });
     await recordResponsivenessTelemetry("boot.secondary_hydration",performanceNow()-startedAt,{
       decisions:decisions.length,

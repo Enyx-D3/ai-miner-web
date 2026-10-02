@@ -44,3 +44,6 @@ next-env.d.ts
 
 # Brain2 local sync runtime state
 /.brain2-sync/
+
+# Global Context V2 runtime hygiene
+.brain2-mrs/*.log

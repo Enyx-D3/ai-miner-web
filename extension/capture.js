@@ -2,11 +2,9 @@
   if (globalThis.__brain2CaptureV082) return;
   globalThis.__brain2CaptureV082 = true;
 
-  const provider = location.hostname === "claude.ai"
-    ? "claude"
-    : location.hostname === "gemini.google.com"
-      ? "gemini"
-      : "chatgpt";
+  const providerAdapter = globalThis.Brain2ProviderAdapters?.resolve?.(location.hostname);
+  if (!providerAdapter) return;
+  const provider = providerAdapter.id;
 
   const STABLE_MS = 1100;
   const HEALTH_MS = 5000;

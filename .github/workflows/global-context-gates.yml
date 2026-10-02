@@ -1,0 +1,25 @@
+name: Global Context Gates
+on:
+  pull_request:
+  push:
+    branches: [global-context-gap-fill, main, v1]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run check:global-context
+      - run: npm run check:global-context-v2
+      - run: npm run test:gc-cp001
+      - run: npm run check:v9
+      - run: npm run check:v8-sync
+      - run: npm run test:v8-sync
+      - run: npm run test:g12-sync-adversarial
+      - run: npm run test:g12-recovery
+      - run: npm run build
