@@ -47,6 +47,7 @@
     "desktop:dist": "npm run desktop:build && electron-builder --config desktop/electron/electron-builder.yml",
     "test:g12-archive-safety": "node scripts/test-g12-archive-safety.mjs",
     "test:g12-recovery": "node scripts/test-g12-recovery.mjs",
+    "test:phase5-sync-state-machine": "node scripts/test-phase5-sync-state-machine.mjs",
     "test:g12-sync-adversarial": "node scripts/test-g12-sync-adversarial.mjs",
     "test:g12-web-security": "node scripts/test-g12-web-security.mjs",
     "test:g12-secret-hygiene": "node scripts/test-g12-secret-hygiene.mjs",
