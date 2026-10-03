@@ -1,3 +1,4 @@
+import type { R1AuthorityReceipt } from "./r1Authority";
 export type Brain2Provider = "chatgpt" | "claude" | "gemini" | "generic";
 export type AtomKind = "decision" | "constraint" | "question" | "idea" | "fact" | "task" | "statement";
 export type TruthStatus = "CURRENT" | "SUPERSEDED" | "HISTORICAL" | "CONFLICTING" | "UNKNOWN" | "PENDING_REVIEW";
@@ -9,6 +10,8 @@ export type TimestampSource = "provider" | "archive" | "dom" | "capture" | "unkn
 export type JournalStatus = "RECEIVED" | "NORMALIZED" | "COMMITTING" | "COMMITTED" | "DERIVED" | "FAILED";
 export type PatternMaturity = "L0_FRAGMENT" | "L1_OBSERVATION" | "L2_CANDIDATE" | "L3_HYPOTHESIS" | "L4_SUPPORTED" | "L5_REPLICATED" | "L6_GENERALIZED" | "L7_PORTABLE_EXPERTISE" | "L8_CANON";
 
+export type IdentityCompatibilityFields = { identityCanonicalId?: string; identityLegacyIds?: string[]; identityStoredId?: string; identityCompatibilityVersion?: string };
+
 export type SourceRecord = {
   id: string;
   provider: Brain2Provider;
@@ -16,6 +19,7 @@ export type SourceRecord = {
   sourceType: string;
   createdAt: string;
   lastSeenAt: string;
+  identityCanonicalId?: string; identityLegacyIds?: string[]; identityStoredId?: string; identityCompatibilityVersion?: string;
   schemaVersion?: number;
 };
 
@@ -33,6 +37,7 @@ export type ConversationRecord = {
   selectedBranchId?: string;
   branchIds?: string[];
   projectResolutionConfidence?: number;
+  identityCanonicalId?: string; identityLegacyIds?: string[]; identityStoredId?: string; identityCompatibilityVersion?: string;
   schemaVersion?: number;
 };
 
@@ -59,6 +64,7 @@ export type MessageRecord = {
   captureId?: string;
   captureUrl?: string;
   captureConnectorId?: string;
+  identityCanonicalId?: string; identityLegacyIds?: string[]; identityStoredId?: string; identityCompatibilityVersion?: string;
   schemaVersion?: number;
 };
 
@@ -93,6 +99,11 @@ export type AtomRecord = {
   supersedesTruthId?: string;
   validFrom?: string;
   validTo?: string;
+  goalId?: string;
+  dependencyIds?: string[];
+  gateId?: string;
+  blockerId?: string;
+  nextAction?: string;
   text: string;
   createdAt?: string;
   confidence: number;
@@ -432,7 +443,7 @@ export type RetrievalTelemetryRecord = {
   returnedCount: number;
   durationMs: number;
   createdAt: string;
-  telemetryKind?: "RETRIEVAL" | "RESPONSIVENESS";
+  telemetryKind?: "RETRIEVAL" | "RESPONSIVENESS" | "FRICTION";
   detailJson?: string;
   schemaVersion?: number;
 };
@@ -447,6 +458,7 @@ export type MutationDeltaPayload = {
   writes: Partial<Record<SyncTableName, Array<{ id: string; [key: string]: unknown }>>>;
   deletes?: Partial<Record<SyncTableName, string[]>>;
   primaryTable?: SyncTableName;
+  r1Authority?: R1AuthorityReceipt;
 };
 export type MutationRecord = {
   id: string; type: string; entityType: string; entityId: string; createdAt: string; deviceId: string; hash: string;

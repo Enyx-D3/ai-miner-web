@@ -4,7 +4,7 @@ declare const process: { env: Record<string,string|undefined> };
 
 import { adoptMemoryRootIfEmpty, applyReplicatedMutations, applySyncBootstrapChunk, applySyncMergeChunk, currentBrain2DeviceId, finalizeSyncBootstrap, finalizeSyncMemoryMerge, getReplicableMutationsForPeer, getSyncReplicaSummary, markPeerAck, streamSyncBootstrap, streamSyncMergeSnapshot, subscribeBrain2, updateSyncPeer } from "./store";
 import { sha256 } from "./identity";
-import { BRAIN2_SYNC_BATCH_LIMIT, BRAIN2_SYNC_CHANNEL, hashBootstrapChunk, hashMutationManifest, verifyMutationEnvelope } from "./syncProtocol";
+import { BRAIN2_SYNC_BATCH_LIMIT, BRAIN2_SYNC_CHANNEL, BRAIN2_SYNC_PROTOCOL_VERSION, hashBootstrapChunk, hashMutationManifest, verifyMutationEnvelope } from "./syncProtocol";
 import {
   assertBrain2DecodedFrameBytes,
   assertBrain2FrameMetadata,
@@ -20,6 +20,8 @@ import {
   BRAIN2_SYNC_REASSEMBLED_MAX_BYTES,
 } from "./syncSafety";
 import type { MutationRecord, SyncTableName } from "./types";
+import { issuePolicyR1Allow, requireVerifiedR1Allow, type R1AuthorityReceipt } from "./r1Authority";
+import { R1_CURRENT_TRUTH_ACTION, containsCurrentTruthWrite, currentTruthAuthorityScope, currentTruthBootstrapContext, currentTruthMergeContext } from "./currentTruthFirewall";
 
 type Signal={id:string;fromDeviceId:string;toDeviceId:string;kind:"offer"|"answer"|"ice"|"bye";payload:any};
 type WireMessage =
@@ -28,21 +30,22 @@ type WireMessage =
  | {type:"mutations";mutations:MutationRecord[];manifestHash:string;fromSequence:number;toSequence:number;originDeviceId?:string}
  | {type:"ack";sequence:number;manifestHash?:string;originDeviceId?:string}
  | {type:"bootstrap_request"}
- | {type:"bootstrap_chunk";memoryRoot:string;table:SyncTableName|"mutations";records?:Array<{id:string;[key:string]:unknown}>;recordsJson?:string;hashVersion?:number;ordinal:number;chunkHash:string}
+ | {type:"bootstrap_chunk";memoryRoot:string;table:SyncTableName|"mutations";records?:Array<{id:string;[key:string]:unknown}>;recordsJson?:string;hashVersion?:number;ordinal:number;chunkHash:string;r1Authority?:R1AuthorityReceipt}
  | {type:"bootstrap_ack";ordinal:number}
  | {type:"bootstrap_complete";memoryRoot:string}
- | {type:"merge_request";targetRoot:string;localSummary?:Record<string,unknown>}
- | {type:"merge_accept";targetRoot:string}
- | {type:"merge_ready";targetRoot:string}
- | {type:"merge_seed_chunk";targetRoot:string;table:SyncTableName;ordinal:number;recordsJson:string;chunkHash:string}
- | {type:"merge_seed_complete";targetRoot:string}
- | {type:"merge_return_chunk";targetRoot:string;table:string;ordinal:number;recordsJson:string;chunkHash:string}
- | {type:"merge_return_complete";targetRoot:string}
- | {type:"merge_complete";targetRoot:string}
+ | {type:"merge_request";sourceRoot:string;targetRoot:string;sourceDeviceId:string;targetDeviceId:string;mergeId:string;r1Authority:R1AuthorityReceipt;localSummary?:Record<string,unknown>}
+ | {type:"merge_accept";sourceRoot:string;targetRoot:string;sourceDeviceId:string;targetDeviceId:string;mergeId:string;r1Authority:R1AuthorityReceipt}
+ | {type:"merge_ready";sourceRoot:string;targetRoot:string;sourceDeviceId:string;targetDeviceId:string;mergeId:string;r1Authority:R1AuthorityReceipt}
+ | {type:"merge_seed_chunk";sourceRoot:string;targetRoot:string;sourceDeviceId:string;targetDeviceId:string;mergeId:string;r1Authority:R1AuthorityReceipt;table:SyncTableName;ordinal:number;recordsJson:string;chunkHash:string}
+ | {type:"merge_seed_complete";sourceRoot:string;targetRoot:string;sourceDeviceId:string;targetDeviceId:string;mergeId:string;r1Authority:R1AuthorityReceipt}
+ | {type:"merge_return_chunk";sourceRoot:string;targetRoot:string;sourceDeviceId:string;targetDeviceId:string;mergeId:string;r1Authority:R1AuthorityReceipt;table:string;ordinal:number;recordsJson:string;chunkHash:string}
+ | {type:"merge_return_complete";sourceRoot:string;targetRoot:string;sourceDeviceId:string;targetDeviceId:string;mergeId:string;r1Authority:R1AuthorityReceipt}
+ | {type:"merge_complete";sourceRoot:string;targetRoot:string;sourceDeviceId:string;targetDeviceId:string;mergeId:string;r1Authority:R1AuthorityReceipt}
  | {type:"ping";at:number};
 
 const TOKEN_KEY="brain2-p2p-device-token";
 const SERVER_DEVICE_KEY="brain2-p2p-server-device-id";
+const ICE_KEY="brain2-p2p-ice-servers";
 const transportEncoder=new TextEncoder();
 const transportDecoder=new TextDecoder();
 
@@ -52,12 +55,13 @@ type Brain2FrameAssembly={total:number;parts:Array<Uint8Array|null>;received:num
 function bytesToBase64(bytes:Uint8Array){let binary="";for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);return btoa(binary);}
 function base64ToBytes(value:string){const binary=atob(value);const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);return bytes;}
 
-function iceConfig():RTCConfiguration{try{const raw=process.env.NEXT_PUBLIC_BRAIN2_ICE_SERVERS_JSON;if(raw)return{iceServers:JSON.parse(raw)};}catch{}return{iceServers:[]};}
+function iceConfig():RTCConfiguration{try{const stored=typeof localStorage!=="undefined"?localStorage.getItem(ICE_KEY):"";if(stored){const parsed=JSON.parse(stored);if(Array.isArray(parsed))return{iceServers:parsed};}}catch{}try{const raw=process.env.NEXT_PUBLIC_BRAIN2_ICE_SERVERS_JSON;if(raw){const parsed=JSON.parse(raw);if(Array.isArray(parsed))return{iceServers:parsed};}}catch{}return{iceServers:[]};}
+function rememberNetworkConfig(body:any){const version=body?.syncProtocolVersion;if(version!==undefined&&Number(version)!==BRAIN2_SYNC_PROTOCOL_VERSION)throw new Error(`Brain2 sync protocol mismatch: server=${version}, web=${BRAIN2_SYNC_PROTOCOL_VERSION}.`);if(Array.isArray(body?.iceServers))localStorage.setItem(ICE_KEY,JSON.stringify(body.iceServers));}
 function signalingBase(){const raw=process.env.NEXT_PUBLIC_BRAIN2_SIGNALING_URL?.trim();return raw?raw.replace(/\/$/,""):"";}
 function syncUrl(path:string){return `${signalingBase()}${path}`;}
 function localToken(){return localStorage.getItem(TOKEN_KEY)||"";}
 function serverDeviceId(){return localStorage.getItem(SERVER_DEVICE_KEY)||currentBrain2DeviceId();}
-function clearLocalCredential(){localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(SERVER_DEVICE_KEY);}
+function clearLocalCredential(){localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(SERVER_DEVICE_KEY);localStorage.removeItem(ICE_KEY);}
 function isUnknownDeviceError(error:unknown){const msg=error instanceof Error?error.message:String(error);return /Unknown or revoked Brain2 device|Invalid Brain2 device sync credential|Brain2 device is not trusted/i.test(msg);}
 async function api(path:string,init?:RequestInit){const r=await fetch(syncUrl(path),init);const body=await r.json().catch(()=>({}));if(!r.ok)throw new Error(body.error||`Brain2 sync request failed (${r.status})`);return body;}
 async function postSignal(peerDeviceId:string,kind:string,payload:any){const token=localToken();if(!token)throw new Error("P2P sync is not enabled on this device.");return api("/api/brain2-sync/signals",{method:"POST",headers:{"Content-Type":"application/json","X-Brain2-Device-Token":token},body:JSON.stringify({fromDeviceId:serverDeviceId(),toDeviceId:peerDeviceId,kind,payload})});}
@@ -67,7 +71,7 @@ class PeerSession{
   peerId:string; pc:RTCPeerConnection; channel:RTCDataChannel|null=null; closed=false; outboundInFlight=false; rootVerified=false; merging=false;
   incomingFrames=new Map<string,Brain2FrameAssembly>(); incomingWork:Promise<void>=Promise.resolve(); frameCounter=0;
   outboundManifestHash=""; outboundToSequence=0;
-  mergePhase:"IDLE"|"ACCEPTED"|"SEEDING"|"AWAITING_RETURN"="IDLE"; mergeReturnOrdinal=0;
+  mergePhase:"IDLE"|"ACCEPTED"|"SEEDING"|"AWAITING_RETURN"="IDLE"; mergeReturnOrdinal=0; activeMerge:null|{sourceRoot:string;targetRoot:string;sourceDeviceId:string;targetDeviceId:string;mergeId:string;receipt:R1AuthorityReceipt}=null;
   receivingBootstrap=false; inboundBootstrapOrdinal=0;
   constructor(peerId:string,initiator:boolean){this.peerId=peerId;this.pc=new RTCPeerConnection(iceConfig());this.pc.onicecandidate=(event)=>{if(event.candidate)void postSignal(peerId,"ice",event.candidate.toJSON()).catch((error)=>{console.warn("[Brain2 P2P] ICE signal retry/failure",error instanceof Error?error.message:String(error));});};this.pc.onconnectionstatechange=()=>{const state=this.pc.connectionState;if(state==="connected")void updateSyncPeer(peerId,{status:"CONNECTED",lastSeenAt:new Date().toISOString(),transport:"WEBRTC"});if(["failed","closed","disconnected"].includes(state))void updateSyncPeer(peerId,{status:state==="failed"?"ERROR":"DISCONNECTED",error:state==="failed"?"WebRTC connection failed":undefined});};this.pc.ondatachannel=(event)=>this.attach(event.channel);if(initiator)this.attach(this.pc.createDataChannel(BRAIN2_SYNC_CHANNEL,{ordered:true}));}
   attach(channel:RTCDataChannel){
@@ -220,48 +224,56 @@ class PeerSession{
       const local=await getSyncReplicaSummary();
       if(this.merging||this.mergePhase!=="IDLE")throw new Error("A Brain2 merge is already active.");
       if(message.targetRoot!==local.memoryRoot)throw new Error("Unexpected Brain2 merge target.");
+      if(!message.mergeId||message.sourceDeviceId!==this.peerId||message.targetDeviceId!==serverDeviceId())throw new Error("Brain2 merge identity mismatch.");
+      const mergeContext=currentTruthMergeContext({sourceRoot:message.sourceRoot,targetRoot:message.targetRoot,sourceDeviceId:message.sourceDeviceId,targetDeviceId:message.targetDeviceId,mergeId:message.mergeId});
+      await requireVerifiedR1Allow(message.r1Authority,{action:R1_CURRENT_TRUTH_ACTION,scope:currentTruthAuthorityScope(mergeContext),minVersion:2,authoritySource:"EXPLICIT_USER_ACTION"});
+      this.activeMerge={sourceRoot:message.sourceRoot,targetRoot:message.targetRoot,sourceDeviceId:message.sourceDeviceId,targetDeviceId:message.targetDeviceId,mergeId:message.mergeId,receipt:message.r1Authority};
       this.merging=true;this.mergePhase="ACCEPTED";this.mergeReturnOrdinal=0;this.rootVerified=false;this.outboundInFlight=false;this.outboundManifestHash="";this.outboundToSequence=0;
       await updateSyncPeer(this.peerId,{status:"SYNCING",lastSeenAt:new Date().toISOString(),transport:"WEBRTC",error:undefined});
-      await this.send({type:"merge_accept",targetRoot:local.memoryRoot});
+      await this.send({type:"merge_accept",...this.activeMerge,r1Authority:this.activeMerge.receipt});
       return;
     }
     if(message.type==="merge_ready"){
       const local=await getSyncReplicaSummary();
-      if(!this.merging||this.mergePhase!=="ACCEPTED")throw new Error("Unexpected Brain2 merge_ready.");
+      if(!this.merging||this.mergePhase!=="ACCEPTED"||!this.activeMerge)throw new Error("Unexpected Brain2 merge_ready.");
       if(message.targetRoot!==local.memoryRoot)throw new Error("Brain2 merge-ready root mismatch.");
+      if(message.mergeId!==this.activeMerge.mergeId||message.r1Authority.hash!==this.activeMerge.receipt.hash)throw new Error("Brain2 merge-ready authority mismatch.");
       this.mergePhase="SEEDING";
       await streamSyncMergeSnapshot(async(chunk)=>{
         const recordsJson=JSON.stringify(chunk.records);
         const chunkHash=await sha256(recordsJson);
-        await this.send({type:"merge_seed_chunk",targetRoot:local.memoryRoot,table:chunk.table,ordinal:chunk.ordinal,recordsJson,chunkHash});
+        await this.send({type:"merge_seed_chunk",...this.activeMerge!,r1Authority:this.activeMerge!.receipt,table:chunk.table,ordinal:chunk.ordinal,recordsJson,chunkHash});
       });
-      await this.send({type:"merge_seed_complete",targetRoot:local.memoryRoot});
+      await this.send({type:"merge_seed_complete",...this.activeMerge!,r1Authority:this.activeMerge!.receipt});
       this.mergePhase="AWAITING_RETURN";
       this.mergeReturnOrdinal=0;
       return;
     }
     if(message.type==="merge_return_chunk"){
       const local=await getSyncReplicaSummary();
-      if(!this.merging||this.mergePhase!=="AWAITING_RETURN")throw new Error("Unexpected Brain2 merge return chunk.");
+      if(!this.merging||this.mergePhase!=="AWAITING_RETURN"||!this.activeMerge)throw new Error("Unexpected Brain2 merge return chunk.");
       if(message.targetRoot!==local.memoryRoot)throw new Error("Brain2 merge return root mismatch.");
+      if(message.mergeId!==this.activeMerge.mergeId||message.r1Authority.hash!==this.activeMerge.receipt.hash)throw new Error("Brain2 merge return authority mismatch.");
       if(!Number.isSafeInteger(message.ordinal)||message.ordinal!==this.mergeReturnOrdinal)throw new Error(`Brain2 merge return ordinal mismatch: expected ${this.mergeReturnOrdinal}, got ${message.ordinal}`);
       const actual=await sha256(message.recordsJson);
       if(actual!==message.chunkHash)throw new Error("Brain2 merge return chunk hash mismatch.");
       const decoded=JSON.parse(message.recordsJson) as unknown;
       if(!Array.isArray(decoded))throw new Error("Brain2 merge return chunk is not a record list.");
       const records=decoded.map((item)=>item as {id:string;[key:string]:unknown});
-      await applySyncMergeChunk(local.memoryRoot,message.table,records);
+      await applySyncMergeChunk(local.memoryRoot,message.table,records,{receipt:this.activeMerge.receipt,sourceRoot:this.activeMerge.sourceRoot,sourceDeviceId:this.activeMerge.sourceDeviceId,targetDeviceId:this.activeMerge.targetDeviceId,mergeId:this.activeMerge.mergeId});
       this.mergeReturnOrdinal+=1;
       return;
     }
     if(message.type==="merge_return_complete"){
       const local=await getSyncReplicaSummary();
-      if(!this.merging||this.mergePhase!=="AWAITING_RETURN")throw new Error("Unexpected Brain2 merge return completion.");
+      if(!this.merging||this.mergePhase!=="AWAITING_RETURN"||!this.activeMerge)throw new Error("Unexpected Brain2 merge return completion.");
       if(message.targetRoot!==local.memoryRoot)throw new Error("Brain2 merge return completion root mismatch.");
+      if(message.mergeId!==this.activeMerge.mergeId||message.r1Authority.hash!==this.activeMerge.receipt.hash)throw new Error("Brain2 merge completion authority mismatch.");
       await finalizeSyncMemoryMerge();
       this.merging=false;this.mergePhase="IDLE";this.mergeReturnOrdinal=0;this.rootVerified=false;this.outboundInFlight=false;this.outboundManifestHash="";this.outboundToSequence=0;
       await updateSyncPeer(this.peerId,{status:"SYNCING",lastSeenAt:new Date().toISOString(),transport:"WEBRTC",error:undefined});
-      await this.send({type:"merge_complete",targetRoot:message.targetRoot});
+      await this.send({type:"merge_complete",...this.activeMerge!,r1Authority:this.activeMerge!.receipt});
+      this.activeMerge=null;
       await this.send({type:"hello",summary:await getSyncReplicaSummary()});
       return;
     }
@@ -270,7 +282,10 @@ class PeerSession{
       const summary=await getSyncReplicaSummary();
       await streamSyncBootstrap(async(chunk)=>{
         const chunkHash=await hashBootstrapChunk(summary.memoryRoot,chunk.table,chunk.ordinal,chunk.records);
-        await this.send({type:"bootstrap_chunk",memoryRoot:summary.memoryRoot,...chunk,chunkHash});
+        const currentTruths=chunk.table==="truths"?chunk.records.filter((record)=>record.status==="CURRENT"):[];
+        const bootstrapContext=currentTruthBootstrapContext({memoryRoot:summary.memoryRoot,sourceDeviceId:serverDeviceId(),targetDeviceId:this.peerId,ordinal:chunk.ordinal,chunkHash});
+        const r1Authority=currentTruths.length?await issuePolicyR1Allow({action:R1_CURRENT_TRUTH_ACTION,scope:currentTruthAuthorityScope(bootstrapContext),reason:"Same-root bootstrap transfers existing canonical Current Truth to an empty trusted replica.",evidenceRefs:currentTruths.map((truth)=>String(truth.id))}):undefined;
+        await this.send({type:"bootstrap_chunk",memoryRoot:summary.memoryRoot,...chunk,chunkHash,r1Authority});
       });
       await this.send({type:"bootstrap_complete",memoryRoot:summary.memoryRoot});
       return;
@@ -290,7 +305,7 @@ class PeerSession{
         actual=await hashBootstrapChunk(message.memoryRoot,message.table,message.ordinal,records);
       }
       if(actual!==message.chunkHash)throw new Error("Brain2 bootstrap chunk hash mismatch.");
-      await applySyncBootstrapChunk(message.memoryRoot,message.table,records);
+      await applySyncBootstrapChunk(message.memoryRoot,message.table,records,{receipt:message.r1Authority,sourceDeviceId:this.peerId,targetDeviceId:serverDeviceId(),ordinal:message.ordinal,chunkHash:message.chunkHash});
       this.inboundBootstrapOrdinal+=1;
       return;
     }
@@ -351,7 +366,7 @@ class PeerSession{
     if(message.type==="ping")return;
     throw new Error("Unsupported Brain2 P2P message.");
   }
-  close(){this.closed=true;this.rootVerified=false;this.merging=false;this.mergePhase="IDLE";this.mergeReturnOrdinal=0;this.outboundInFlight=false;this.outboundManifestHash="";this.outboundToSequence=0;this.receivingBootstrap=false;this.inboundBootstrapOrdinal=0;this.incomingFrames.clear();try{this.channel?.close();}catch{}try{this.pc.close();}catch{}}
+  close(){this.closed=true;this.rootVerified=false;this.merging=false;this.activeMerge=null;this.mergePhase="IDLE";this.mergeReturnOrdinal=0;this.outboundInFlight=false;this.outboundManifestHash="";this.outboundToSequence=0;this.receivingBootstrap=false;this.inboundBootstrapOrdinal=0;this.incomingFrames.clear();try{this.channel?.close();}catch{}try{this.pc.close();}catch{}}
 }
 
 const sessions=new Map<string,PeerSession>();let pollTimer:number|undefined;let unsubscribeDelta:(()=>void)|undefined;let flushTimer:number|undefined;
@@ -366,8 +381,8 @@ function consumeSignalsSafely(){
 export function startBrain2P2P(){if(typeof window==="undefined"||!localToken())return;if(!pollTimer){consumeSignalsSafely();pollTimer=window.setInterval(consumeSignalsSafely,3000);}if(!unsubscribeDelta)unsubscribeDelta=subscribeBrain2(flushConnectedPeers);}
 export function stopBrain2P2P(){if(pollTimer){clearInterval(pollTimer);pollTimer=undefined;}if(flushTimer){clearTimeout(flushTimer);flushTimer=undefined;}unsubscribeDelta?.();unsubscribeDelta=undefined;for(const session of sessions.values())session.close();sessions.clear();seenSignalIds.clear();}
 
-export async function enableBrain2P2P(){const summary=await getSyncReplicaSummary();const deviceId=currentBrain2DeviceId();const body=await api("/api/brain2-sync/devices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId,spaceId:summary.memoryRoot,name:"AI Miner Web",kind:"web"})});localStorage.setItem(TOKEN_KEY,body.deviceToken);localStorage.setItem(SERVER_DEVICE_KEY,body.deviceId);startBrain2P2P();return body;}
-export async function joinBrain2P2P(joinToken:string){const deviceId=currentBrain2DeviceId();const body=await api("/api/brain2-sync/devices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId,name:"AI Miner Web",kind:"web",joinToken})});await adoptMemoryRootIfEmpty(body.spaceId);localStorage.setItem(TOKEN_KEY,body.deviceToken);localStorage.setItem(SERVER_DEVICE_KEY,body.deviceId);startBrain2P2P();return body;}
+export async function enableBrain2P2P(){const summary=await getSyncReplicaSummary();const deviceId=currentBrain2DeviceId();const body=await api("/api/brain2-sync/devices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId,spaceId:summary.memoryRoot,name:"AI Miner Web",kind:"web"})});rememberNetworkConfig(body);localStorage.setItem(TOKEN_KEY,body.deviceToken);localStorage.setItem(SERVER_DEVICE_KEY,body.deviceId);startBrain2P2P();return body;}
+export async function joinBrain2P2P(joinToken:string){const deviceId=currentBrain2DeviceId();const body=await api("/api/brain2-sync/devices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId,name:"AI Miner Web",kind:"web",joinToken})});rememberNetworkConfig(body);await adoptMemoryRootIfEmpty(body.spaceId);localStorage.setItem(TOKEN_KEY,body.deviceToken);localStorage.setItem(SERVER_DEVICE_KEY,body.deviceId);startBrain2P2P();return body;}
 export async function createBrain2PairingToken(){try{return await api("/api/brain2-sync/pairing",{method:"POST",headers:{"Content-Type":"application/json","X-Brain2-Device-Token":localToken()},body:JSON.stringify({deviceId:serverDeviceId()})});}catch(error){if(!isUnknownDeviceError(error))throw error;clearLocalCredential();await enableBrain2P2P();return api("/api/brain2-sync/pairing",{method:"POST",headers:{"Content-Type":"application/json","X-Brain2-Device-Token":localToken()},body:JSON.stringify({deviceId:serverDeviceId()})});}}
 async function physicalPairingOrigin(){const configured=signalingBase();if(configured)return configured;const response=await api("/api/brain2-sync/origin");const origin=String(response.origin??"").replace(/\/$/,"");if(!origin)throw new Error(response.error||"Brain2 could not determine a LAN-reachable signaling origin.");return origin;}
 export async function createBrain2PairingInvite(){const pair=await createBrain2PairingToken();const signalOrigin=await physicalPairingOrigin();const url=new URL("/devices",signalOrigin);url.searchParams.set("pair",pair.token);url.searchParams.set("peer",serverDeviceId());url.searchParams.set("expires",pair.expiresAt);url.searchParams.set("v","2");url.searchParams.set("signal",signalOrigin);return {...pair,inviterDeviceId:serverDeviceId(),signalingOrigin:signalOrigin,pairingUrl:url.toString()};}

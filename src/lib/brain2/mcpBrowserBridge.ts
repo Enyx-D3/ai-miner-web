@@ -10,10 +10,14 @@ import {
   createMission,
   currentBrain2DeviceId,
   getBrain2Snapshot,
+  getContinuityIntelligence,
+  recordContinuityFriction,
   loadConversationMessages,
   loadProjectAtoms,
+  replayGlobalContextAnswer,
   searchBrain2Async,
 } from "./store";
+import { planSharedQuery, hashSharedQueryPlan } from "./sharedQueryPlanner";
 
 type BridgeCommand = {
   requestId: string;
@@ -169,6 +173,7 @@ async function bridgeSearch(params: Record<string, unknown>) {
   const exhausted = nextOffset >= totalMatches;
   const snapshot = getBrain2Snapshot();
 
+  if(projectId&&totalMatches===0)await recordContinuityFriction("FAILED_RETRIEVAL",projectId,{surface:"mcp_search",mode}).catch(()=>undefined);
   return {
     query,
     projectId: projectId || undefined,
@@ -217,13 +222,34 @@ async function dispatch(method: string, params: Record<string, unknown>) {
   if (method === "resumeCapsule") {
     const project = resolveProject(params.project);
     if (!project) throw new Error(`Project not found in AI Miner: ${asString(params.project)}`);
+    await recordContinuityFriction("CONTEXT_REENTRY",project.id,{surface:"mcp_resume"}).catch(()=>undefined);
     return buildGlobalContextResumeCapsule(snapshot, project.id);
+  }
+
+  if (method === "continuity") {
+    const project = resolveProject(params.project);
+    if (!project) throw new Error(`Project not found in AI Miner: ${asString(params.project)}`);
+    return { projectId:project.id, continuity:getContinuityIntelligence(project.id), memoryRoot:snapshot.memoryRoot, snapshotVersion:snapshot.version };
+  }
+
+  if (method === "answerUpgrade") {
+    const project = resolveProject(params.project);
+    if (!project) throw new Error(`Project not found in AI Miner: ${asString(params.project)}`);
+    const previousAnswer=asString(params.previousAnswer);
+    const previousEvidenceIds=Array.isArray(params.previousEvidenceIds)?params.previousEvidenceIds.map(asString).filter(Boolean):[];
+    return replayGlobalContextAnswer(project.id,previousAnswer,previousEvidenceIds);
+  }
+
+  if (method === "queryPlan") {
+    const query=asString(params.query);const projectCount=Math.max(0,asInt(params.projectCount,0));const plan=planSharedQuery(query,{projectCount});return {plan,planHash:await hashSharedQueryPlan(plan)};
   }
 
   if (method === "antiReinvention") {
     const query = asString(params.query);
     const project = asString(params.project) ? resolveProject(params.project) : undefined;
-    return { query, projectId: project?.id, hits: findAntiReinvention(snapshot, query, project?.id, Math.max(1, Math.min(20, asInt(params.limit, 6)))), memoryRoot: snapshot.memoryRoot, snapshotVersion: snapshot.version };
+    const hits=findAntiReinvention(snapshot, query, project?.id, Math.max(1, Math.min(20, asInt(params.limit, 6))));
+    if(project?.id&&hits.length)await recordContinuityFriction("REINVENTION_HIT",project.id,{surface:"mcp_anti_reinvention",hitCount:hits.length}).catch(()=>undefined);
+    return { query, projectId: project?.id, hits, memoryRoot: snapshot.memoryRoot, snapshotVersion: snapshot.version };
   }
 
   if (method === "contextPackage") {

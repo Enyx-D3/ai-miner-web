@@ -9,6 +9,7 @@ import type {
 } from "./types";
 import type { B2JobPackage } from "./jobs";
 import { issueUserR1Allow, requireR1Allow } from "./r1Authority";
+import { findContinuitySnapshot, type ContinuitySnapshot } from "./continuityIntelligence";
 
 export type GlobalContextResumeCapsule = {
   format: "GLOBAL_CONTEXT_RESUME";
@@ -57,6 +58,7 @@ export type GlobalContextResumeCapsule = {
   };
   evidenceRefs: string[];
   generatedAt: string;
+  continuity?: { goalId:string; stateHash:string; checklistSummary:{open:number;blocked:number;gates:number;done:number;unknown:number}; recap:ContinuitySnapshot["recap"]; prescription:string[]; avoidedWorkLedger:ContinuitySnapshot["avoidedWorkLedger"] };
   capsuleHash: string;
 };
 
@@ -176,19 +178,25 @@ export async function buildGlobalContextResumeCapsule(
     .sort(byUpdatedDesc)
     .slice(0, 8);
 
+  const continuity=findContinuitySnapshot(snapshot.intelligenceSnapshots as unknown as Array<Record<string,unknown>>,project.id);
   const currentTask = current.find((truth) => truth.kind === "task");
-  const goal = normalizeText(currentTask?.text || project.summary || project.name);
+  const goal = normalizeText(continuity?.goal.text || currentTask?.text || project.summary || project.name);
   const primaryTick = ticks[0];
   const nextAction = primaryTick
     ? { kind: "TICK" as const, text: primaryTick.title, refId: primaryTick.id }
     : currentTask
-      ? { kind: "TASK" as const, text: currentTask.text, refId: currentTask.id }
-      : { kind: "CONTINUE" as const, text: `Continue ${project.name} from the latest verified project state.` };
+      ? continuity?.prescription[0]
+        ? { kind: "CONTINUE" as const, text: continuity.prescription[0], refId: continuity.id }
+        : { kind: "TASK" as const, text: currentTask.text, refId: currentTask.id }
+      : continuity?.prescription[0]
+        ? { kind: "CONTINUE" as const, text: continuity.prescription[0], refId: continuity.id }
+        : { kind: "CONTINUE" as const, text: `Continue ${project.name} from the latest verified project state.` };
 
   const evidenceRefs = [...new Set([
     ...current.flatMap((truth) => truth.evidenceAtomIds ?? [truth.atomId]),
     ...ticks.flatMap((tick) => tick.evidenceAtomIds ?? []),
     ...failures.flatMap((failure) => failure.evidenceIds ?? []),
+    ...(continuity?.checklist.flatMap((item)=>item.evidenceAtomIds) ?? []),
   ])].sort();
 
   // Hash only stable semantic state. generatedAt is deliberately excluded.
@@ -212,6 +220,7 @@ export async function buildGlobalContextResumeCapsule(
     })).sort((a,b)=>a.id.localeCompare(b.id)),
     nextAction,
     evidenceRefs,
+    ...(continuity?{continuity:{goalId:continuity.goal.id,stateHash:continuity.stateHash,checklistSummary:{open:continuity.recap.open,blocked:continuity.recap.blocked,gates:continuity.recap.gates,done:continuity.recap.done,unknown:continuity.recap.unknown},recap:continuity.recap,prescription:[...continuity.prescription],avoidedWorkLedger:continuity.avoidedWorkLedger.map((item)=>({...item}))}}:{}),
   };
   const capsuleHash = await sha256(canonicalJson(stable));
   return {
@@ -413,6 +422,7 @@ export function renderGlobalContextOutbound(pkg: GlobalContextPackage) {
     ...(failures.length ? failures.map((item)=>`- ${item.title}: ${item.cause}${item.repairThatWorked ? ` | repair: ${item.repairThatWorked}` : ""}`) : ["- None recorded."]),
     "",
     `EXACT NEXT ACTION: ${pkg.resumeCapsule.nextAction.text}`,
+    ...(pkg.resumeCapsule.continuity?.prescription?.length?["", "CONTINUITY PRESCRIPTION:", ...pkg.resumeCapsule.continuity.prescription.map((item)=>`- ${item}`)]:[]),
     "",
     `SELECTED EVIDENCE IDS (${evidenceIds.length}): ${evidenceIds.slice(0,64).join(", ")}`,
     "",

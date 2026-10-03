@@ -14,6 +14,37 @@ const id=(prefix:string)=>`${prefix}_${randomBytes(12).toString("hex")}`;
 const netlifyPersistent=()=>Boolean(process.env.NETLIFY||process.env.NETLIFY_BLOBS_CONTEXT);
 
 export const BRAIN2_SIGNAL_MAX_PAYLOAD_BYTES=64*1024;
+export type Brain2IceServer={urls:string|string[];username?:string;credential?:string};
+
+function brain2IceUrl(value:unknown){
+  if(typeof value!=="string"||!value||value.length>2048)throw new Error("Invalid Brain2 ICE server URL.");
+  if(!/^(stun|stuns|turn|turns):/i.test(value))throw new Error("Brain2 ICE server URL must use stun/stuns/turn/turns.");
+  return value;
+}
+
+export function brain2IceServers():Brain2IceServer[]{
+  const raw=(process.env.BRAIN2_ICE_SERVERS_JSON||process.env.NEXT_PUBLIC_BRAIN2_ICE_SERVERS_JSON||"").trim();
+  if(!raw)return[];
+  let parsed:unknown;
+  try{parsed=JSON.parse(raw);}catch{throw new Error("Invalid Brain2 ICE server JSON.");}
+  if(!Array.isArray(parsed)||parsed.length>16)throw new Error("Brain2 ICE server config must be an array of at most 16 entries.");
+  return parsed.map((entry,index)=>{
+    if(!entry||typeof entry!=="object"||Array.isArray(entry))throw new Error(`Invalid Brain2 ICE server entry ${index}.`);
+    const item=entry as Record<string,unknown>;
+    const rawUrls=item.urls;
+    const urls=typeof rawUrls==="string"
+      ?brain2IceUrl(rawUrls)
+      :Array.isArray(rawUrls)&&rawUrls.length>0&&rawUrls.length<=8
+        ?rawUrls.map(brain2IceUrl)
+        :(()=>{throw new Error(`Brain2 ICE server entry ${index} has invalid urls.`);})();
+    const username=item.username;
+    const credential=item.credential;
+    if(username!==undefined&&(typeof username!=="string"||username.length>2048))throw new Error(`Brain2 ICE server entry ${index} has invalid username.`);
+    if(credential!==undefined&&(typeof credential!=="string"||credential.length>4096))throw new Error(`Brain2 ICE server entry ${index} has invalid credential.`);
+    return{urls,...(username!==undefined?{username}:{}),...(credential!==undefined?{credential}:{})};
+  });
+}
+
 const BRAIN2_SYNC_DEVICE_ID_RE=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export function assertBrain2SyncDeviceId(deviceId:string){

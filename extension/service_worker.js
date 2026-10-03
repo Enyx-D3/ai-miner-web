@@ -138,7 +138,7 @@ async function captureLatestActive(){
     const response=await chrome.tabs.sendMessage(tab.id,{type:"BRAIN2_CAPTURE_LATEST"});
     if(response)return response;
   }catch{}
-  await chrome.scripting.executeScript({target:{tabId:tab.id},files:["capture.js"]});
+  await chrome.scripting.executeScript({target:{tabId:tab.id},files:["provider_adapters.js","capture.js"]});
   await new Promise(r=>setTimeout(r,250));
   return chrome.tabs.sendMessage(tab.id,{type:"BRAIN2_CAPTURE_LATEST"});
 }
@@ -149,7 +149,7 @@ async function configureSidePanel(){try{await chrome.sidePanel.setPanelBehavior(
 async function injectCaptureIntoOpenProviderTabs(){
   const patterns=["https://chatgpt.com/*","https://claude.ai/*","https://gemini.google.com/*"];
   const tabs=await chrome.tabs.query({url:patterns});
-  for(const tab of tabs){if(!tab.id)continue;try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:["capture.js"]});}catch{}}
+  for(const tab of tabs){if(!tab.id)continue;try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:["provider_adapters.js","capture.js"]});}catch{}}
 }
 
 chrome.runtime.onInstalled.addListener(()=>{void initializeVault();void configureSidePanel();void injectCaptureIntoOpenProviderTabs();});
