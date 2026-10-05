@@ -5,8 +5,8 @@ import ReduxProvider from "@/redux/ReduxProvider";
 import { Brain2Provider } from "@/components/brain2/Brain2Provider";
 
 export const metadata: Metadata = {
-  title: "Brain2 AI Miner — Brain2 Labs",
-  description: "Mine AI history into source-backed projects, current truth, live notebooks, wiki, ticks, patterns, experiments and durable memory.",
+  title: "Brain2InContext — Brain2 Labs",
+  description: "Bring AI history into one source-backed context workspace for projects, Current Truth, recall, live notebooks, evidence and durable memory.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

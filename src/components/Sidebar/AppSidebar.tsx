@@ -12,6 +12,7 @@ import {
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail,
 } from "@/components/ui/sidebar";
 import { getBrain2RuntimeAvailabilityHint, subscribeBrain2Transformers } from "@/lib/brain2/transformersRuntime";
+import { InContextTree } from "@/components/brain2/InContextTree";
 
 const coreItems = [
   { title: "Home", url: "/dashboard", icon: LayoutDashboard },
@@ -58,7 +59,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   useEffect(()=>subscribeBrain2Transformers(()=>setModelDownloaded(getBrain2RuntimeAvailabilityHint().hasCachedRuntime)),[]);
   const modelBadgeClass=modelDownloaded?"border-emerald-200 bg-emerald-50 text-emerald-700":"border-amber-200 bg-amber-50 text-amber-700";
   return <Sidebar {...props} className="border-r border-border bg-white/90">
-    <SidebarHeader className="border-b border-border p-4"><Link href="/dashboard" className="flex items-center gap-2.5"><span className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 via-blue-600 to-violet-600 font-tight text-xs font-black text-white shadow-[0_8px_22px_rgba(37,99,235,.2)]">B2</span><span className="leading-none"><span className="block font-tight text-xs font-extrabold tracking-[-.02em]">Global Context</span><span className="mt-1 block text-[9px] font-semibold text-muted-foreground">Private AI continuity</span></span></Link></SidebarHeader>
+    <SidebarHeader className="border-b border-border p-4"><Link href="/dashboard" className="flex items-center gap-2.5"><span className="grid size-10 place-items-center rounded-xl bg-white/70"><InContextTree variant="mark" className="incontext-brand-tree size-9" /></span><span className="leading-none"><span className="block text-xs font-extrabold tracking-[-.025em] text-[#29253E]">brain2:<span className="text-[var(--blue)]">inContext</span></span><span className="mt-1 block text-[9px] font-semibold text-muted-foreground">Private AI continuity</span></span></Link></SidebarHeader>
     <SidebarContent>
       <SidebarGroup>
         <SidebarGroupContent>
