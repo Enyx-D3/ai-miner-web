@@ -1,10 +1,10 @@
-# Brain2 AI Miner Extension v0.8.3
+# brain2:inContext Extension v0.8.3
 
 **Primary change:** the toolbar popup is restored for Connect/Disconnect, while the Chrome Side Panel remains the persistent capture monitor. Connection status is now based on the completed Brain2 nonce handshake, not merely a saved origin.
 
 See `CONNECTION_MODEL_V0_8_3.md`.
 
-# Brain2 AI Miner Extension v0.8.0
+# brain2:inContext Extension v0.8.0
 
 ## Locked purpose
 
@@ -29,7 +29,7 @@ provider detection
 → capture/connector health
 ```
 
-It does **not** own atomization, Current Truth, RapidRetrieve, MRS, LifeWiki, Pattern Lab, or the Reasoning Compiler. Those belong to Brain2 AI Miner after canonical ingestion.
+It does **not** own atomization, Current Truth, RapidRetrieve, MRS, LifeWiki, Pattern Lab, or the Reasoning Compiler. Those belong to brain2:inContext after canonical ingestion.
 
 ## What changed from v0.7
 
@@ -40,7 +40,7 @@ It does **not** own atomization, Current Truth, RapidRetrieve, MRS, LifeWiki, Pa
 5. **Provider health telemetry** showing whether each supported site is being watched, last successful capture, and capture errors.
 6. **Send queued now** button and one-minute retry pulse.
 7. Stable SHA-256 capture IDs + IndexedDB unique index continue to provide dedupe.
-8. Website bridge protocol remains compatible with the current Brain2 AI Miner web receiver.
+8. Website bridge protocol remains compatible with the current brain2:inContext web receiver.
 
 ## Install
 
@@ -48,12 +48,12 @@ It does **not** own atomization, Current Truth, RapidRetrieve, MRS, LifeWiki, Pa
 2. Enable **Developer mode**.
 3. Click **Load unpacked**.
 4. Select this extension folder.
-5. Pin Brain2 AI Miner if desired.
+5. Pin brain2:inContext if desired.
 6. Click the Brain2 icon. Chrome opens the persistent right-side panel.
 
 ## Connect Brain2
 
-1. Open the Brain2 AI Miner website.
+1. Open the brain2:inContext website.
 2. Open the extension side panel.
 3. Click **Connect active Brain2 tab**.
 4. Approve permission for that Brain2 website origin.

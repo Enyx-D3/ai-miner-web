@@ -89,7 +89,7 @@ export function GlobalContextContinuePage() {
 
   return <div className="b2-workspace-view p-4 sm:p-6 lg:p-7">
     <div className="b2-page-head mb-5">
-      <div className="b2-kicker">Global Context · Continue</div>
+      <div className="b2-kicker">brain2:inContext · Continue</div>
       <h1 className="font-tight mt-2 text-3xl font-black tracking-[-.04em]">Resume a project without rereading the universe</h1>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--secondary-text)]">Compile the smallest source-backed continuation capsule, surface previous work before reinvention, preview exactly what leaves this device, then explicitly approve the handoff.</p>
     </div>

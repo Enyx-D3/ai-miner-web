@@ -21,7 +21,7 @@ req(side.includes('waitForHandshake'),'connection waits for real nonce handshake
 req(side.indexOf('chrome.permissions.request')>=0&&side.indexOf('BRAIN2_CONFIG_ORIGIN')>side.indexOf('chrome.permissions.request'),'one-click permission continuation invariant');
 req(sideHtml.includes('id="connectionAction"'),'single connection action button');
 req(!sideHtml.includes('id="connect"')&&!sideHtml.includes('id="disconnect"'),'Connect and Disconnect must never coexist as separate buttons');
-req(side.includes('action.textContent="Disconnect Global Context"')&&side.includes('action.textContent="Connect to active Global Context tab"'),'single action toggles Connect/Disconnect');
+req(side.includes('action.textContent="Disconnect brain2:inContext"')&&side.includes('action.textContent="Connect to active brain2:inContext tab"'),'single action toggles Connect/Disconnect');
 req(side.includes('retryHandshake'),'retry only after configured handshake issue');
 req(adapters.includes('version: 2'),'real provider adapter registry v2');
 for(const fn of ['conversationId','conversationTitle','isGenerating','extractTurns'])req(adapters.includes(fn),'adapter method '+fn);

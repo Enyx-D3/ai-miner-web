@@ -1,7 +1,7 @@
 {
   "name": "brain2-ai-miner-web-app",
   "version": "0.9.13",
-  "description": "AI Miner desktop and web app with local Brain2 deterministic plus MRS runtime.",
+  "description": "brain2:inContext desktop and web app with local Brain2 deterministic plus MRS runtime.",
   "author": "Enyx",
   "private": true,
   "main": "desktop/electron/main.cjs",
@@ -10,6 +10,7 @@
     "dev:turbopack": "next dev",
     "build": "next build --webpack",
     "start": "next start",
+    "validate:production-config": "node scripts/validate-production-config.mjs",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "smoke:browser-digest": "node local-dev/scripts/smoke-browser-digest.mjs",

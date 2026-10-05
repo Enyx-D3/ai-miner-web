@@ -5,8 +5,23 @@ import ReduxProvider from "@/redux/ReduxProvider";
 import { Brain2Provider } from "@/components/brain2/Brain2Provider";
 
 export const metadata: Metadata = {
-  title: "Brain2InContext — Brain2 Labs",
-  description: "Bring AI history into one source-backed context workspace for projects, Current Truth, recall, live notebooks, evidence and durable memory.",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
+  title: {
+    default: "brain2:inContext — Brain2 Labs",
+    template: "%s — brain2:inContext",
+  },
+  description: "Persistent AI project continuity: source-backed memory, Current Truth, evidence, recall, handoff, and portable Brain2 context.",
+  openGraph: {
+    title: "brain2:inContext",
+    description: "Keep the context. Continue the work.",
+    siteName: "brain2:inContext",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "brain2:inContext",
+    description: "Persistent AI project continuity by Brain2 Labs.",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
