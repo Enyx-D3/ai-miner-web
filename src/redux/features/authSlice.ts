@@ -1,34 +1,27 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import Cookies from "js-cookie";
+
 interface AuthState {
-  token: string | null;
-  refresh_token: string | null;
+  signedIn: boolean;
 }
 
 const initialState: AuthState = {
-  token: null,
-  refresh_token: null,
+  signedIn: false,
 };
 
 const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
-    setUser: (state, action: PayloadAction<{ token: string }>) => {
-      state.token = action.payload.token;
-      Cookies.set("accessToken", action.payload.token);
+    setUser: (state, action: PayloadAction<unknown | undefined>) => {
+      void action;
+      state.signedIn = true;
     },
-    setRefreshToken: (
-      state,
-      action: PayloadAction<{ refresh_token: string }>
-    ) => {
-      state.refresh_token = action.payload.refresh_token;
-      Cookies.set("refreshToken", action.payload.refresh_token);
+    setRefreshToken: (state, action: PayloadAction<unknown | undefined>) => {
+      void state;
+      void action;
     },
     logout: (state) => {
-      state.token = null;
-      state.refresh_token = null;
-      Cookies.remove("accessToken");
+      state.signedIn = false;
     },
   },
 });

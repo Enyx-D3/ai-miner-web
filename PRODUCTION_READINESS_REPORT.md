@@ -29,9 +29,9 @@ Primary files changed include `.env.example`, `package.json`, `scripts/validate-
 
 ## 5. Auth Implementation
 
-Status: `BLOCKED`. Existing web auth is not production auth. The current proxy only guards legacy `/booking` paths and decodes a cookie client-side style; it does not provide production account creation, HttpOnly sessions, revoked-session handling, user isolation, or account deletion.
+Status: `PARTIAL`. Mission 01 adds Supabase Google OAuth, server-side session validation, HttpOnly access/refresh cookies, logout cookie clearing, `/api/v1/auth/session`, `/api/v1/users/me`, `/auth/callback`, and default-deny protected dashboard routes. Hardcoded demo email/password auth and client-readable token persistence are retired.
 
-Decision: do not silently add fake Supabase or fake credentials. Env placeholders and production validation are prepared.
+Blocked for production: real Supabase project credentials, Google OAuth provider configuration, and account deletion/export flows.
 
 ## 6. Billing Implementation
 
@@ -39,7 +39,7 @@ Status: `BLOCKED`. Pricing currently redirects to the landing page. Stripe env p
 
 ## 7. Entitlement Model
 
-Status: `MISSING`. Centralized production entitlements are still required. Recommended first set: `memory.import`, `memory.export`, `projects.access`, `search.access`, `context.compile`, `result.submit`, `sync.devices`, `mrs.local`, `missions`.
+Status: `PARTIAL`. Mission 01 adds `brain2_entitlements` with RLS and default `NONE`. Active access is limited to `ACTIVE`/`TRIALING` rows; Stripe creation and webhook updates are still Mission 02.
 
 ## 8. MCP Production Gateway
 
@@ -132,8 +132,8 @@ Physical Android/Web sync certification remains pending on real hardware/network
 
 ## 26. Known Remaining Risks
 
-- No production account tenancy.
-- No billing/subscription enforcement.
+- Account tenancy foundation depends on applying the Supabase migration and configuring real Supabase Auth.
+- No Stripe checkout/webhook-driven subscription creation yet.
 - MCP can be deployed safely only with bearer/bridge secrets configured.
 - Full import stress and Current Truth benchmarks are not launch-complete.
 - Legal copy is draft only.
@@ -150,7 +150,7 @@ Use `PRODUCTION_SETUP.md`, `PRODUCTION_ENV_CHECKLIST.md`, `SECURITY_CHECKLIST.md
 
 CORE_PRODUCT: NOT_READY
 
-AUTH: BLOCKED
+AUTH: PARTIAL
 
 BILLING: BLOCKED
 

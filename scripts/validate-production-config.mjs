@@ -7,8 +7,7 @@ const groups = [
   },
   {
     name: "AUTH",
-    required: ["AUTH_PROVIDER", "AUTH_SESSION_SECRET"],
-    anyOf: [["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"], ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]],
+    required: ["AUTH_PROVIDER", "AUTH_SESSION_SECRET", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
   },
   {
     name: "BILLING",
@@ -44,6 +43,10 @@ if (!isProduction) {
 
 if (process.env.LOCAL_DEMO_MODE === "1" || process.env.BILLING_DEMO_MODE === "1") {
   missing.push("SECURITY:demo modes must be disabled in production");
+}
+
+if (process.env.AUTH_PROVIDER && process.env.AUTH_PROVIDER !== "supabase") {
+  missing.push("AUTH:AUTH_PROVIDER must be supabase");
 }
 
 if (missing.length) {

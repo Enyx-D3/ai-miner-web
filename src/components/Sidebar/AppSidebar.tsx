@@ -59,9 +59,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   useEffect(()=>subscribeBrain2Transformers(()=>setModelDownloaded(getBrain2RuntimeAvailabilityHint().hasCachedRuntime)),[]);
   const modelBadgeClass=modelDownloaded?"border-emerald-200 bg-emerald-50 text-emerald-700":"border-amber-200 bg-amber-50 text-amber-700";
   async function signOut() {
-    await fetch("/api/local-auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
-    document.cookie = "accessToken=; Max-Age=0; path=/";
-    document.cookie = "refreshToken=; Max-Age=0; path=/";
+    await fetch("/api/v1/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
     window.location.assign("/login");
   }
   return <Sidebar {...props} className="border-r border-border bg-white/90">

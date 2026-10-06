@@ -1,16 +1,8 @@
 import { NextResponse } from "next/server";
-
-const COOKIES = ["brain2LocalAuth", "accessToken", "refreshToken"];
+import { clearAuthCookies } from "@/server/auth/session";
 
 export async function POST() {
   const response = NextResponse.json({ ok: true });
-  for (const name of COOKIES) {
-    response.cookies.set(name, "", {
-      path: "/",
-      maxAge: 0,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-    });
-  }
+  clearAuthCookies(response);
   return response;
 }

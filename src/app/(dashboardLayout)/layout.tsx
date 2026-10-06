@@ -1,8 +1,10 @@
 import { AppSidebar } from "@/components/Sidebar/AppSidebar";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { requirePaidEntitlement } from "@/server/auth/session";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  await requirePaidEntitlement();
   return (
     <SidebarProvider>
       <AppSidebar />
