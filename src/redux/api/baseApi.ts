@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   BaseQueryFn,
   createApi,
@@ -6,71 +5,15 @@ import {
   fetchBaseQuery,
   FetchBaseQueryError,
 } from "@reduxjs/toolkit/query/react";
-import { RootState } from "../store";
-import { logout, setUser } from "../features/authSlice";
-
-// const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
-// if (!baseUrl) {
-//   throw new Error("Environment variable NEXT_PUBLIC_BASE_URL is not set");
-// }
-
-// const baseQueryWithAuth: ReturnType<typeof fetchBaseQuery> = async (
-//   args,
-//   api,
-//   extraOptions
-// ) => {
-//   const rawBaseQuery = fetchBaseQuery({
-//     baseUrl,
-//     prepareHeaders: (headers, { getState }) => {
-//       const token = (getState() as RootState).auth?.token;
-//       console.log("token ===" ,token)
-//       if (token) {
-//         headers.set("Authorization", `${token}`);
-//       }
-//       return headers;
-//     },
-//   });
-
-//   const result = await rawBaseQuery(args, api, extraOptions);
-
-//   if (
-//     result.error &&
-//     (result.error.status === 401 || result.error.status === 403)
-//   ) {
-//     api.dispatch(logout());
-//     // Redirect to login page
-//     if (typeof window !== "undefined") {
-//       window.location.href = "/login";
-//     }
-//   }
-
-//   return result;
-// };
-
-// export const baseApi = createApi({
-//   reducerPath: "baseApi",
-//   baseQuery: baseQueryWithAuth,
-//   tagTypes: ["User"],
-//   endpoints: (builder) => ({}),
-// });
-
-//* for refresh token use this following setup of base api
-//* Change the refresh api url (if needed)
-//* change the error structure (if needed)
-//* change the token name if you are not getting token as a accessToken named then change it according to your data.
-//* if you want you can handle other status code (if needed), currently only 401 handled.
+import { logout } from "../features/authSlice";
 
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "/api/";
+type ServerError = { status?: number; data?: unknown };
 
 const baseQuery = fetchBaseQuery({
   baseUrl,
-  prepareHeaders: (headers, { getState }) => {
-    const state = getState() as RootState;
-    const token = state?.auth?.token || null;
-    if (token) {
-      headers.set("authorization", `Bearer ${token}`);
-    }
+  credentials: "same-origin",
+  prepareHeaders: (headers) => {
     headers.set("ngrok-skip-browser-warning", "true");
     return headers;
   },
@@ -80,37 +23,19 @@ const baseQueryWithReauth: BaseQueryFn<
   unknown,
   FetchBaseQueryError
 > = async (args, api, extraOptions) => {
-  let result = await baseQuery(args, api, extraOptions);
-  const state = api.getState() as RootState;
-  const refresh = state?.auth?.refresh_token || null;
+  const result = await baseQuery(args, api, extraOptions);
   if (result.error) {
-    const errorData = result.error;
+    const errorData = result.error as ServerError;
     // Preserve the full server error response so catch blocks can read
     // err?.data?.message, err?.data?.error, etc.
     result.error = {
-      status: (errorData as any)?.status || 500,
-      data: (errorData as any)?.data ?? "Something went wrong",
+      status: errorData.status || 500,
+      data: errorData.data ?? "Something went wrong",
     };
   }
 
   if (result.error && result.error.status == 401) {
-    const refreshResult = await baseQuery(
-      {
-        url: "auth/token/refresh/",
-        method: "POST",
-        body: { refresh },
-      },
-      api,
-      extraOptions,
-    );
-
-    if (refreshResult.data) {
-      const newToken = (refreshResult.data as { access: string }).access;
-      api.dispatch(setUser({ token: newToken }));
-      result = await baseQuery(args, api, extraOptions);
-    } else {
-      api.dispatch(logout());
-    }
+    api.dispatch(logout());
   }
 
   return result;

@@ -6,7 +6,29 @@ import process from "node:process";
 const root=process.cwd();const dist=join(root,".v8-sync-test-dist");rmSync(dist,{recursive:true,force:true});
 execFileSync(process.platform==="win32"?"tsc.cmd":"tsc",["-p","tsconfig.v8-sync-fixtures.json","--pretty","false"],{stdio:"inherit"});
 const protocol=await import(pathToFileURL(join(dist,"lib/brain2/syncProtocol.js"))); // output preserves src subroot below common source dir
+if(protocol.brain2MutationGapExpected(0,1)!==null)throw new Error("Sequence 1 should be valid from empty cursor");
+if(protocol.brain2MutationGapExpected(0,3)!==1)throw new Error("Initial out-of-order batch was not rejected");
+if(protocol.brain2MutationGapExpected(2,2)!==null)throw new Error("Duplicate/old mutation should remain idempotent");
+if(protocol.brain2MutationGapExpected(2,3)!==null)throw new Error("Contiguous next mutation rejected");
+const mergeOld={id:"same",updatedAt:"2026-01-01T00:00:00Z",text:"old"};
+const mergeNew={id:"same",updatedAt:"2026-09-08T00:00:00Z",text:"new"};
+if((await protocol.brain2MergeWinner(mergeOld,mergeNew)).text!=="new")throw new Error("Merge winner did not prefer later clock");
+const tieA={id:"tie",text:"alpha"},tieB={id:"tie",text:"beta"};
+const tieForward=await protocol.brain2MergeWinner(tieA,tieB);
+const tieReverse=await protocol.brain2MergeWinner(tieB,tieA);
+if(protocol.canonicalJson(tieForward)!==protocol.canonicalJson(tieReverse))throw new Error("Merge winner is not order-independent");
 const server=await import(pathToFileURL(join(dist,"server/brain2/syncServer.js")));
+process.env.BRAIN2_ICE_SERVERS_JSON=JSON.stringify([
+  {urls:["stun:stun.example.test:3478"]},
+  {urls:"turn:turn.example.test:3478",username:"brain2",credential:"secret"}
+]);
+const ice=server.brain2IceServers();
+if(ice.length!==2||ice[0].urls[0]!=="stun:stun.example.test:3478"||ice[1].username!=="brain2")throw new Error("Server-authoritative ICE config normalization failed");
+process.env.BRAIN2_ICE_SERVERS_JSON=JSON.stringify([{urls:"https://not-ice.example"}]);
+let invalidIceRejected=false;try{server.brain2IceServers();}catch{invalidIceRejected=true}if(!invalidIceRejected)throw new Error("Invalid ICE URL scheme was accepted");
+process.env.BRAIN2_ICE_SERVERS_JSON="{";
+invalidIceRejected=false;try{server.brain2IceServers();}catch{invalidIceRejected=true}if(!invalidIceRejected)throw new Error("Invalid ICE JSON was accepted");
+delete process.env.BRAIN2_ICE_SERVERS_JSON;
 const temp=join(root,".v8-sync-smoke-data");rmSync(temp,{recursive:true,force:true});mkdirSync(temp,{recursive:true});process.env.BRAIN2_SYNC_DATA_DIR=temp;
 const payload={version:1,operation:"UPSERT_BUNDLE",primaryTable:"ticks",writes:{ticks:[{id:"tick_1",title:"A"}]}};
 const payloadHash=await protocol.hashPayload(payload);const base={protocolVersion:2,memoryRoot:"b2m_test",originDeviceId:"dev_a",originSequence:1,type:"CREATE",entityType:"tick",entityId:"tick_1",payloadHash,parentMutationIds:[]};const hash=await protocol.hashMutation(base);const mutation={id:`mut_${hash.slice(0,24)}`,createdAt:new Date().toISOString(),deviceId:"dev_a",hash,sequence:1,schemaVersion:8,...base,payload,replicationStatus:"LOCAL_COMMITTED",sourceTransport:"LOCAL"};
@@ -21,5 +43,5 @@ const pair=await server.createPairingToken("dev_a",a.deviceToken);const b=await 
 rejected=false;try{await server.registerSyncDevice({deviceId:"dev_c",name:"C",kind:"web",joinToken:pair.token});}catch{rejected=true}if(!rejected)throw new Error("Pairing token was reusable");
 const pair2=await server.createPairingToken("dev_a",a.deviceToken);const b2=await server.registerSyncDevice({deviceId:"dev_b",name:"B repaired",kind:"web",joinToken:pair2.token});if(!b2.repaired||b2.deviceToken===b.deviceToken)throw new Error("Fresh QR did not rotate/recover existing device credential");
 await server.postSyncSignal({fromDeviceId:"dev_a",deviceToken:a.deviceToken,toDeviceId:"dev_b",kind:"offer",payload:{sdp:"test"}});const pulled=await server.pullSyncSignals({deviceId:"dev_b",deviceToken:b2.deviceToken});if(pulled.length!==1||pulled[0].kind!=="offer")throw new Error("Signal mailbox failed");if((await server.pullSyncSignals({deviceId:"dev_b",deviceToken:b2.deviceToken})).length)throw new Error("Consumed signal redelivered");
-console.log("V8 sync smoke PASS: hashed/tamper-proof mutation envelope + batch manifest, bounded bootstrap chunks, same-root single-use pairing, credentialed signaling, consume-once mailbox.");
+console.log("V8 sync smoke PASS: hashed/tamper-proof mutation envelope + batch manifest, bounded bootstrap chunks, same-root single-use pairing, credentialed signaling, consume-once mailbox, validated server-authoritative ICE config.");
 rmSync(temp,{recursive:true,force:true});rmSync(dist,{recursive:true,force:true});

@@ -14,7 +14,7 @@ function sleep(ms) {
 async function readDbSummary(page) {
   return page.evaluate(async () => {
     const open = await new Promise((resolve, reject) => {
-      const request = indexedDB.open("brain2-ai-miner", 11);
+      const request = indexedDB.open("brain2-ai-miner", 12);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });

@@ -30,7 +30,13 @@ function makeBase(version:number){const size=version*4+17;const modules=Array.fr
   const finder=(cx:number,cy:number)=>{for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){const dist=Math.max(Math.abs(dx),Math.abs(dy));set(cx+dx,cy+dy,dist!==2&&dist!==4);}};
   finder(3,3);finder(size-4,3);finder(3,size-4);
   for(let i=8;i<size-8;i++){set(6,i,i%2===0);set(i,6,i%2===0);}
-  for(const y of ALIGNMENT[version])for(const x of ALIGNMENT[version]){if(func[y]?.[x])continue;for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)set(x+dx,y+dy,Math.max(Math.abs(dx),Math.abs(dy))!==1);}
+  const align=ALIGNMENT[version];
+  for(let yi=0;yi<align.length;yi++)for(let xi=0;xi<align.length;xi++){
+    const overlapsFinder=(xi===0&&yi===0)||(xi===0&&yi===align.length-1)||(xi===align.length-1&&yi===0);
+    if(overlapsFinder)continue;
+    const x=align[xi],y=align[yi];
+    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)set(x+dx,y+dy,Math.max(Math.abs(dx),Math.abs(dy))!==1);
+  }
   // Reserve/write format information using mask 0 initially. It remains functional during data placement.
   const f=formatBits(0);for(let i=0;i<=5;i++)set(8,i,((f>>>i)&1)!==0);set(8,7,((f>>>6)&1)!==0);set(8,8,((f>>>7)&1)!==0);set(7,8,((f>>>8)&1)!==0);for(let i=9;i<15;i++)set(14-i,8,((f>>>i)&1)!==0);
   for(let i=0;i<8;i++)set(size-1-i,8,((f>>>i)&1)!==0);for(let i=8;i<15;i++)set(8,size-15+i,((f>>>i)&1)!==0);set(8,size-8,true);

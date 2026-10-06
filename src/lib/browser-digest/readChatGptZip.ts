@@ -68,9 +68,49 @@ function isGeminiActivityPath(path: string): boolean {
 
 type RelevantZipEntry = { path: string; bytes: Uint8Array }
 
+export const BRAIN2_ARCHIVE_MAX_COMPRESSED_BYTES = 1024 * 1024 * 1024
+export const BRAIN2_ARCHIVE_MAX_ENTRIES = 100_000
+export const BRAIN2_ARCHIVE_MAX_RELEVANT_ENTRIES = 512
+export const BRAIN2_ARCHIVE_MAX_SINGLE_JSON_BYTES = 256 * 1024 * 1024
+export const BRAIN2_ARCHIVE_MAX_TOTAL_JSON_BYTES = 512 * 1024 * 1024
+export const BRAIN2_ARCHIVE_MIN_EXPANSION_BUDGET_BYTES = 64 * 1024 * 1024
+export const BRAIN2_ARCHIVE_MAX_EXPANSION_RATIO = 200
+
+export function brain2ArchiveExpansionLimit(compressedBytes: number): number {
+  const size = Math.max(0, Math.trunc(compressedBytes))
+  return Math.min(
+    BRAIN2_ARCHIVE_MAX_TOTAL_JSON_BYTES,
+    Math.max(BRAIN2_ARCHIVE_MIN_EXPANSION_BUDGET_BYTES, size * BRAIN2_ARCHIVE_MAX_EXPANSION_RATIO),
+  )
+}
+
+export function assertBrain2ArchiveCompressedSize(size: number) {
+  if (!Number.isFinite(size) || size <= 0) throw new Error("The archive is empty or has an invalid size.")
+  if (size > BRAIN2_ARCHIVE_MAX_COMPRESSED_BYTES) {
+    throw new Error(`Archive exceeds Brain2's ${Math.round(BRAIN2_ARCHIVE_MAX_COMPRESSED_BYTES / 1024 / 1024)} MiB compressed-size safety limit.`)
+  }
+}
+
+export function normalizeBrain2ArchiveEntryPath(rawPath: string): string {
+  if (rawPath.includes("\0")) throw new Error("Archive entry contains a NUL byte.")
+  const normalized = rawPath.replace(/\\/g, "/")
+  if (normalized.startsWith("/") || normalized.startsWith("//") || /^[a-zA-Z]:\//.test(normalized)) {
+    throw new Error(`Archive entry uses an absolute path: ${rawPath}`)
+  }
+  const parts = normalized.split("/").filter((part) => part && part !== ".")
+  if (parts.some((part) => part === "..")) {
+    throw new Error(`Archive entry attempts parent-directory traversal: ${rawPath}`)
+  }
+  return parts.join("/")
+}
+
 async function extractRelevantZipEntries(file: File): Promise<{ entries: RelevantZipEntry[]; archiveEntryCount: number }> {
+  assertBrain2ArchiveCompressedSize(file.size)
   const entries: RelevantZipEntry[] = []
   let archiveEntryCount = 0
+  let relevantEntryCount = 0
+  let totalRelevantBytes = 0
+  const expansionLimit = brain2ArchiveExpansionLimit(file.size)
   let pending = 0
   let inputFinished = false
   let settled = false
@@ -89,20 +129,46 @@ async function extractRelevantZipEntries(file: File): Promise<{ entries: Relevan
     }
 
     const unzip = new Unzip((entry) => {
+      if (settled) return
       archiveEntryCount += 1
-      const path = entry.name.replace(/\\/g, "/")
+      if (archiveEntryCount > BRAIN2_ARCHIVE_MAX_ENTRIES) {
+        fail(new Error(`Archive contains more than ${BRAIN2_ARCHIVE_MAX_ENTRIES} entries.`))
+        return
+      }
+      let path: string
+      try {
+        path = normalizeBrain2ArchiveEntryPath(entry.name)
+      } catch (error) {
+        fail(error)
+        return
+      }
       if (!isConversationJsonPath(path) && !isGeminiActivityPath(path)) return
+      relevantEntryCount += 1
+      if (relevantEntryCount > BRAIN2_ARCHIVE_MAX_RELEVANT_ENTRIES) {
+        fail(new Error(`Archive contains more than ${BRAIN2_ARCHIVE_MAX_RELEVANT_ENTRIES} relevant conversation JSON files.`))
+        return
+      }
       pending += 1
       const chunks: Uint8Array[] = []
       let total = 0
       entry.ondata = (error, chunk, final) => {
+        if (settled) return
         if (error) {
           fail(error)
           return
         }
         if (chunk.byteLength) {
-          chunks.push(chunk)
           total += chunk.byteLength
+          totalRelevantBytes += chunk.byteLength
+          if (total > BRAIN2_ARCHIVE_MAX_SINGLE_JSON_BYTES) {
+            fail(new Error(`${path} exceeds Brain2's ${Math.round(BRAIN2_ARCHIVE_MAX_SINGLE_JSON_BYTES / 1024 / 1024)} MiB per-JSON safety limit.`))
+            return
+          }
+          if (totalRelevantBytes > expansionLimit) {
+            fail(new Error(`Archive decompression exceeded Brain2's safety budget (${Math.round(expansionLimit / 1024 / 1024)} MiB).`))
+            return
+          }
+          chunks.push(chunk)
         }
         if (!final) return
         const bytes = new Uint8Array(total)

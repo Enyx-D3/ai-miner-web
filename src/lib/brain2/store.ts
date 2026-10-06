@@ -19,9 +19,15 @@ import { getBrain2RuntimeAvailabilityHint, getBrain2TransformersSnapshot, isBrai
 import { runBrain2ForegroundTask } from "./foregroundTaskGate";
 import { brain2MRSError, brain2MRSLog } from "./mrsDebug";
 import { reconcileAtomToTruth } from "./truthEngine";
-import { canonicalId, canonicalMessageId, indexTerms, keywords, normalizeText, sha256, wordCount } from "./identity";
-import { BRAIN2_SYNC_PROTOCOL_VERSION, canonicalJson, hashEntity, hashMutation, hashPayload, packBootstrapRecords, verifyMutationEnvelope } from "./syncProtocol";
+import { canonicalId, canonicalIdLegacyV9, canonicalMessageId, canonicalMessageIdLegacyV9, indexTerms, keywords, normalizeText, sha256, wordCount } from "./identity";
+import { identityCompatibilityMetadata, requireCompatibleStoredId } from "./identityCompatibility";
+import { brain2MergeWinner, brain2MutationGapExpected, BRAIN2_SYNC_PROTOCOL_VERSION, canonicalJson, hashEntity, hashMutation, hashPayload, packBootstrapRecords, verifyMutationEnvelope } from "./syncProtocol";
 import { runASIFReaderQuery } from "./asifReaderCore";
+import { getBrain2BrowserRuntimeIfAvailable, type Brain2RuntimeSearchItem } from "./browserRuntime";
+import { parseRuntimeExecutionEvidence } from "./runtimeEvidence";
+import { buildContinuitySnapshot, completeContinuityChecklistItem, findContinuitySnapshot, frictionTelemetryDetail, recordAvoidedWork, replayAnswer, type AvoidedWorkKind, type FrictionEventType } from "./continuityIntelligence";
+import { issuePolicyR1Allow, issueUserR1Allow, issueVerifierR1, verifyR1AuthorityReceipt, type R1AuthorityReceipt } from "./r1Authority";
+import { R1_CURRENT_TRUTH_ACTION, containsCurrentTruthWrite, currentTruthAuthorityScope, currentTruthMutationContext, currentTruthBootstrapContext, currentTruthMergeContext, currentTruthB2MImportContext, requireCurrentTruthAuthority, requireCurrentTruthAuthorityForMutation } from "./currentTruthFirewall";
 import type {
   AtomRecord,
   B2TransactionRecord,
@@ -55,14 +61,16 @@ import type {
   RetrievalTelemetryRecord,
   ProjectRecord,
   SourceRecord,
+  SharedStateSnapshotRecord,
   TickRecord,
   TruthRecord,
   VerificationRecord,
 } from "./types";
+import { journalNeedsRecovery, recoverInterruptedJournal } from "./recovery";
 import type { ProjectIntelligenceWorkerEvent, ProjectIntelligenceWorkerRequest } from "@/workers/brain2ProjectIntelligence.worker";
 
 const DB_NAME = "brain2-ai-miner";
-const DB_VERSION = 11;
+const DB_VERSION = 12;
 const HOT_MESSAGE_LIMIT = 600;
 const HOT_ATOM_LIMIT = 1200;
 const RECENT_EVENT_LIMIT = 800;
@@ -70,7 +78,7 @@ const SEARCH_INDEX_BATCH = 500;
 const CALCULATED_PROJECT_RISK_TICK_VERSION = "B2_CALCULATED_PROJECT_RISK_TICK_V1";
 const CALCULATED_PROJECT_RISK_WAKE_PREFIX = `brain2:auto-project-risk:${CALCULATED_PROJECT_RISK_TICK_VERSION}`;
 const TABLES = [
-  "sources","conversations","messages","atoms","truths","projects","ticks","decisions","patterns","experiments","missions","checkpoints","mutations","devices","verifications","transactions","journals","contextVaultRuns","patternTests","portableExpertise","compiledCapabilities","reasoningTrajectories","failureMemories","derivedArtifacts","databoxes","retrievalTelemetry","evidenceBlocks","searchDocs","syncPeers","syncConflicts","meta",
+  "sources","conversations","messages","atoms","truths","projects","ticks","decisions","patterns","experiments","missions","checkpoints","mutations","devices","verifications","transactions","journals","contextVaultRuns","patternTests","portableExpertise","compiledCapabilities","reasoningTrajectories","failureMemories","derivedArtifacts","databoxes","retrievalTelemetry","evidenceBlocks","mrsRuns","intelligenceSnapshots","wikiSnapshots","notebookSnapshots","searchDocs","syncPeers","syncConflicts","meta",
 ] as const;
 
 type TableName = typeof TABLES[number];
@@ -144,7 +152,7 @@ const emptyStorage: Brain2StorageState = {
   totalMessages:0,totalAtoms:0,totalTruths:0,totalConversations:0,totalEvidenceBlocks:0,indexedDocuments:0,hotMessages:0,hotAtoms:0,retrievalIndexStatus:"EMPTY",retrievalIndexProgress:0,bootMode:"BOUNDED_HOT_SET",
 };
 const emptySnapshot: Brain2Snapshot = {
-  sources: [], conversations: [], messages: [], atoms: [], truths: [], projects: [], ticks: [], decisions: [], patterns: [], experiments: [], missions: [], checkpoints: [], mutations: [], devices: [], verifications: [], transactions: [], journals: [], contextVaultRuns: [], patternTests: [], portableExpertise: [], compiledCapabilities: [], reasoningTrajectories: [], failureMemories: [], derivedArtifacts: [], databoxes: [], retrievalTelemetry: [], evidenceBlocks: [], syncPeers: [], syncConflicts: [], storage:{...emptyStorage}, memoryRoot: "", loaded: false, version: 0,
+  sources: [], conversations: [], messages: [], atoms: [], truths: [], projects: [], ticks: [], decisions: [], patterns: [], experiments: [], missions: [], checkpoints: [], mutations: [], devices: [], verifications: [], transactions: [], journals: [], contextVaultRuns: [], patternTests: [], portableExpertise: [], compiledCapabilities: [], reasoningTrajectories: [], failureMemories: [], derivedArtifacts: [], databoxes: [], retrievalTelemetry: [], evidenceBlocks: [], mrsRuns: [], intelligenceSnapshots: [], wikiSnapshots: [], notebookSnapshots: [], syncPeers: [], syncConflicts: [], storage:{...emptyStorage}, memoryRoot: "", loaded: false, version: 0,
 };
 
 let snapshot: Brain2Snapshot = emptySnapshot;
@@ -284,10 +292,20 @@ function mergeById<T extends { id: string }>(base: T[], writes: T[]): T[] {
   return [...map.values()];
 }
 
+async function recoverInterruptedIngestionJournals(
+  journals: IngestionJournalRecord[],
+): Promise<IngestionJournalRecord[]> {
+  const interrupted=journals.filter((journal)=>journalNeedsRecovery(journal.status));
+  if(!interrupted.length)return journals;
+  const recovered=interrupted.map((journal)=>recoverInterruptedJournal(journal,now()));
+  await atomicPut({journals:recovered});
+  return mergeById(journals,recovered);
+}
+
 function buildTelemetryRecord(input:{
   route:string;
   durationMs:number;
-  telemetryKind?:"RETRIEVAL"|"RESPONSIVENESS";
+  telemetryKind?:"RETRIEVAL"|"RESPONSIVENESS"|"FRICTION";
   queryHash?:string;
   candidateCount?:number;
   returnedCount?:number;
@@ -316,6 +334,11 @@ async function persistTelemetryRecord(record:RetrievalTelemetryRecord){
 
 async function recordResponsivenessTelemetry(route:string,durationMs:number,detail?:Record<string,unknown>){
   await persistTelemetryRecord(buildTelemetryRecord({route,durationMs,telemetryKind:"RESPONSIVENESS",detail}));
+}
+
+export async function recordContinuityFriction(type:FrictionEventType,projectId:string,detail:Record<string,unknown>={}){
+  await bootBrain2();
+  await persistTelemetryRecord(buildTelemetryRecord({route:`continuity.friction.${type.toLowerCase()}`,durationMs:0,telemetryKind:"FRICTION",detail:frictionTelemetryDetail(type,projectId,detail)}));
 }
 
 function flushLongTaskTelemetry(){
@@ -541,6 +564,10 @@ async function hydrateSecondaryBootTables(): Promise<void> {
       compiledCapabilities,
       reasoningTrajectories,
       failureMemories,
+      mrsRuns,
+      intelligenceSnapshots,
+      wikiSnapshots,
+      notebookSnapshots,
     ] = await Promise.all([
       all<DecisionRecord>("decisions"),
       all<PatternRecord>("patterns"),
@@ -554,6 +581,10 @@ async function hydrateSecondaryBootTables(): Promise<void> {
       all<CompiledCapabilityRecord>("compiledCapabilities"),
       all<ReasoningTrajectoryRecord>("reasoningTrajectories"),
       all<FailureMemoryRecord>("failureMemories"),
+      all<SharedStateSnapshotRecord>("mrsRuns"),
+      all<SharedStateSnapshotRecord>("intelligenceSnapshots"),
+      all<SharedStateSnapshotRecord>("wikiSnapshots"),
+      all<SharedStateSnapshotRecord>("notebookSnapshots"),
     ]);
     snapshot = {
       ...snapshot,
@@ -569,6 +600,10 @@ async function hydrateSecondaryBootTables(): Promise<void> {
       compiledCapabilities,
       reasoningTrajectories,
       failureMemories,
+      mrsRuns,
+      intelligenceSnapshots,
+      wikiSnapshots,
+      notebookSnapshots,
     };
     rebuildIngestionIndexes();
     setSnapshot({
@@ -584,6 +619,10 @@ async function hydrateSecondaryBootTables(): Promise<void> {
       compiledCapabilities: snapshot.compiledCapabilities,
       reasoningTrajectories: snapshot.reasoningTrajectories,
       failureMemories: snapshot.failureMemories,
+      mrsRuns: snapshot.mrsRuns,
+      intelligenceSnapshots: snapshot.intelligenceSnapshots,
+      wikiSnapshots: snapshot.wikiSnapshots,
+      notebookSnapshots: snapshot.notebookSnapshots,
     });
     await recordResponsivenessTelemetry("boot.secondary_hydration",performanceNow()-startedAt,{
       decisions:decisions.length,
@@ -797,6 +836,23 @@ async function persistentSearch<K extends "message"|"atom"|"truth">(kind:K,query
     docsForTerm:async(k:"message"|"atom"|"truth",term:string,docLimit:number,pid?:string)=>{const hits=await getAllByIndex<PersistentSearchDocument>("searchDocs","byTerm",term,Math.max(docLimit*2,64));return hits.filter((doc)=>doc.kind===k&&(!pid||doc.projectId===pid)).slice(0,docLimit);},
     hydrate:async(k:"message"|"atom"|"truth",ids:string[])=>{const table=k==="message"?"messages":k==="atom"?"atoms":"truths";return await getByIds<MessageRecord|AtomRecord|TruthRecord>(table,ids);},
   };
+  const q=normalizeText(query);
+  const runtime=await getBrain2BrowserRuntimeIfAvailable();
+  if(runtime&&q){
+    const docsById=new Map<string,PersistentSearchDocument>();
+    for(const term of indexTerms(q,12)){
+      const docs=await adapter.docsForTerm(kind,term,Math.max(limit*8,128),projectId);
+      for(const doc of docs)docsById.set(doc.id,doc);
+      if(docsById.size>=Math.max(limit*16,256))break;
+    }
+    const candidates=[...docsById.values()];
+    if(candidates.length){
+      const ranked=await runtime.searchDocuments(q,candidates.map((doc)=>({...doc,id:doc.id,text:doc.text,kind:doc.kind}) satisfies Brain2RuntimeSearchItem & PersistentSearchDocument),limit);
+      const records=await adapter.hydrate(kind,ranked.map((doc)=>doc.recordId));
+      const byId=new Map(records.map((record)=>[record.id,record]));
+      return ranked.map((doc)=>byId.get(doc.recordId)).filter((record):record is K extends "message"?MessageRecord:K extends "atom"?AtomRecord:TruthRecord=>Boolean(record)) as never;
+    }
+  }
   const result=await runASIFReaderQuery(adapter,kind,query,limit,projectId);
   return result.records as never;
 }
@@ -1077,6 +1133,7 @@ export async function bootBrain2(): Promise<void> {
       await metaPut("memoryRoot", memoryRoot);
     }
     configurePersistentRetrieval(persistentSearch,evidenceExists);
+    void getBrain2BrowserRuntimeIfAvailable();
     const [
       sources, conversations, messages, atoms, currentTruths, conflictingTruths, pendingTruths, recentTruths,
       projects, ticks, recentMutations, devices, recentTransactions, committedJournals, failedJournals, recentJournals,
@@ -1096,7 +1153,8 @@ export async function bootBrain2(): Promise<void> {
       all<DerivedArtifactRecord>("derivedArtifacts"), recentByIndex<DataboxRecord>("databoxes","byCreatedAt",500), recentByIndex<RetrievalTelemetryRecord>("retrievalTelemetry","byCreatedAt",500), recentByIndex<EvidenceBlockRecord>("evidenceBlocks","byUpdatedAt",500), all<SyncPeerRecord>("syncPeers"), all<SyncConflictRecord>("syncConflicts"),
     ]);
     const truths=mergeById(mergeById(mergeById(currentTruths,conflictingTruths),pendingTruths),recentTruths);
-    const journals=mergeById(mergeById(recentJournals,committedJournals),failedJournals);
+    const loadedJournals=mergeById(mergeById(recentJournals,committedJournals),failedJournals);
+    const journals=await recoverInterruptedIngestionJournals(loadedJournals);
     const webDevice = await ensureWebDevice(memoryRoot);
     const finalDevices = [...devices.filter((device) => device.id !== webDevice.id), webDevice];
     const searchVersion=await metaGet("searchIndexVersion");
@@ -1134,11 +1192,11 @@ export async function bootBrain2(): Promise<void> {
   return bootPromise;
 }
 
-const SYNC_TABLES: SyncTableName[] = ["sources","conversations","messages","atoms","truths","projects","ticks","decisions","patterns","experiments","missions","checkpoints","verifications","transactions","patternTests","portableExpertise","compiledCapabilities","reasoningTrajectories","failureMemories","databoxes","evidenceBlocks"];
+const SYNC_TABLES: SyncTableName[] = ["sources","conversations","messages","atoms","truths","projects","ticks","decisions","patterns","experiments","missions","checkpoints","verifications","transactions","patternTests","portableExpertise","compiledCapabilities","reasoningTrajectories","failureMemories","databoxes","evidenceBlocks","mrsRuns","intelligenceSnapshots","wikiSnapshots","notebookSnapshots"];
 const SYNC_TABLE_SET = new Set<string>(SYNC_TABLES);
 
-function deltaPayload(primaryTable:SyncTableName,writes:MutationDeltaPayload["writes"],deletes?:MutationDeltaPayload["deletes"]):MutationDeltaPayload{
-  return {version:1,operation:deletes?"UPSERT_BUNDLE":"UPSERT_BUNDLE",writes,deletes,primaryTable};
+function deltaPayload(primaryTable:SyncTableName,writes:MutationDeltaPayload["writes"],deletes?:MutationDeltaPayload["deletes"],r1Authority?:R1AuthorityReceipt):MutationDeltaPayload{
+  return {version:1,operation:deletes?"UPSERT_BUNDLE":"UPSERT_BUNDLE",writes,deletes,primaryTable,...(r1Authority?{r1Authority}: {})};
 }
 
 async function buildMutation(type: string, entityType: string, entityId: string, payload?:MutationDeltaPayload, beforeValue?:unknown): Promise<MutationRecord> {
@@ -1151,6 +1209,11 @@ async function buildMutation(type: string, entityType: string, entityId: string,
     const legacyHash=await sha256(`${BRAIN2_SCHEMA_VERSION}|${type}|${entityType}|${entityId}|${createdAt}|${deviceId}|${sequence}|${parentMutationId??""}`);
     return {id:`mut_${legacyHash.slice(0,24)}`,type,entityType,entityId,createdAt,deviceId,hash:legacyHash,sequence,parentMutationId,schemaVersion:BRAIN2_SCHEMA_VERSION,originDeviceId:deviceId,originSequence:sequence,parentMutationIds:parentMutationId?[parentMutationId]:[],memoryRoot:snapshot.memoryRoot,protocolVersion:BRAIN2_SYNC_PROTOCOL_VERSION,replicationStatus:"LINEAGE_ONLY",sourceTransport:"LOCAL"};
   }
+  await requireCurrentTruthAuthorityForMutation({
+    writes:payload.writes,
+    receipt:payload.r1Authority,
+    context:currentTruthMutationContext({type,entityType,entityId,memoryRoot:snapshot.memoryRoot}),
+  });
   const payloadHash=await hashPayload(payload);
   const primaryRecord=payload.primaryTable ? payload.writes[payload.primaryTable]?.find((record)=>record.id===entityId) : undefined;
   const beforeHash=beforeValue===undefined?undefined:await hashEntity(beforeValue);
@@ -1169,9 +1232,14 @@ async function recordMutation(type: string, entityType: string, entityId: string
 }
 
 async function buildSource(provider: SourceRecord["provider"], label: string, sourceType: string): Promise<SourceRecord> {
-  const id = await canonicalId("src", provider, sourceType);
-  const existing = snapshot.sources.find((item) => item.id === id);
-  return { id, provider, label, sourceType, createdAt: existing?.createdAt ?? now(), lastSeenAt: now(), schemaVersion: BRAIN2_SCHEMA_VERSION };
+  const canonicalSourceId = await canonicalId("src", provider, sourceType);
+  const legacySourceId = await canonicalIdLegacyV9("src", provider, sourceType);
+  const current = snapshot.sources.find((item)=>item.id===canonicalSourceId) ?? await getOne<SourceRecord>("sources",canonicalSourceId);
+  const legacy = legacySourceId===canonicalSourceId?current:(snapshot.sources.find((item)=>item.id===legacySourceId) ?? await getOne<SourceRecord>("sources",legacySourceId));
+  const equivalent = Boolean(current&&legacy&&current.provider===legacy.provider&&normalizeText(current.sourceType)===normalizeText(legacy.sourceType));
+  const id=requireCompatibleStoredId({canonicalId:canonicalSourceId,legacyId:legacySourceId,canonicalExists:Boolean(current),legacyExists:Boolean(legacy),semanticallyEquivalent:equivalent},`source:${provider}:${sourceType}`);
+  const existing=id===canonicalSourceId?current:legacy;
+  return { ...(existing??{}), id, provider, label, sourceType, createdAt: existing?.createdAt ?? now(), lastSeenAt: now(), ...identityCompatibilityMetadata(canonicalSourceId,legacySourceId,id), schemaVersion: BRAIN2_SCHEMA_VERSION };
 }
 
 async function resolveProjectForInput(input: NormalizedConversationInput, existingConversation?: ConversationRecord): Promise<{project:ProjectRecord; created:boolean}> {
@@ -1220,8 +1288,13 @@ function replaceTruthGroup(writes: TruthRecord[]) {
 export async function ingestNormalizedConversation(input: NormalizedConversationInput): Promise<{ messagesAdded: number; atomsAdded: number; projectId: string }> {
   await bootBrain2();
   const source = await buildSource(input.provider,input.sourceLabel,input.sourceType);
-  const conversationId = await canonicalId("conv", input.provider, input.externalId || input.title);
-  const existingConversation = snapshot.conversations.find((item)=>item.id===conversationId);
+  const canonicalConversationId = await canonicalId("conv", input.provider, input.externalId || input.title);
+  const legacyConversationId = await canonicalIdLegacyV9("conv", input.provider, input.externalId || input.title);
+  const currentConversation = snapshot.conversations.find((item)=>item.id===canonicalConversationId) ?? await getOne<ConversationRecord>("conversations",canonicalConversationId);
+  const legacyConversation = legacyConversationId===canonicalConversationId?currentConversation:(snapshot.conversations.find((item)=>item.id===legacyConversationId) ?? await getOne<ConversationRecord>("conversations",legacyConversationId));
+  const conversationEquivalent=Boolean(currentConversation&&legacyConversation&&currentConversation.provider===legacyConversation.provider&&normalizeText(currentConversation.externalId)===normalizeText(legacyConversation.externalId)&&normalizeText(currentConversation.title)===normalizeText(legacyConversation.title));
+  const conversationId=requireCompatibleStoredId({canonicalId:canonicalConversationId,legacyId:legacyConversationId,canonicalExists:Boolean(currentConversation),legacyExists:Boolean(legacyConversation),semanticallyEquivalent:conversationEquivalent},`conversation:${input.provider}:${input.externalId||input.title}`);
+  const existingConversation=conversationId===canonicalConversationId?currentConversation:legacyConversation;
   const { project, created: projectCreated } = await resolveProjectForInput(input,existingConversation);
   const payloadHash = await sha256(JSON.stringify({ provider:input.provider,externalId:input.externalId,title:input.title,selectedBranchId:input.selectedBranchId,messages:input.messages.map((m)=>[m.externalId,m.providerMessageId,m.providerNodeId,m.parentProviderNodeId,m.branchId,m.sequence,m.role,normalizeText(m.text),m.occurredAt]) }));
   const journalId = await canonicalId("ingest",input.provider,input.externalId,payloadHash);
@@ -1234,8 +1307,8 @@ export async function ingestNormalizedConversation(input: NormalizedConversation
 
   try {
     journal={...journal,status:"NORMALIZED",updatedAt:now()}; await put("journals",journal); snapshot.journals=mergeById(snapshot.journals,[journal]);
-    const conversation: ConversationRecord = existingConversation ?? {
-      id:conversationId,sourceId:source.id,provider:input.provider,externalId:input.externalId || conversationId,title:normalizeText(input.title || "Untitled conversation"),createdAt:input.createdAt,updatedAt:input.updatedAt,projectId:project.id,messageCount:0,wordCount:0,selectedBranchId:input.selectedBranchId,branchIds:input.branchIds,projectResolutionConfidence:project.resolutionConfidence,schemaVersion:BRAIN2_SCHEMA_VERSION,
+    const conversation: ConversationRecord = existingConversation ? {...existingConversation,...identityCompatibilityMetadata(canonicalConversationId,legacyConversationId,conversationId)} : {
+      id:conversationId,sourceId:source.id,provider:input.provider,externalId:input.externalId || conversationId,title:normalizeText(input.title || "Untitled conversation"),createdAt:input.createdAt,updatedAt:input.updatedAt,projectId:project.id,messageCount:0,wordCount:0,selectedBranchId:input.selectedBranchId,branchIds:input.branchIds,projectResolutionConfidence:project.resolutionConfidence,...identityCompatibilityMetadata(canonicalConversationId,legacyConversationId,conversationId),schemaVersion:BRAIN2_SCHEMA_VERSION,
     };
     const messageWrites: MessageRecord[]=[];
     const atomWrites: AtomRecord[]=[];
@@ -1259,11 +1332,15 @@ export async function ingestNormalizedConversation(input: NormalizedConversation
       const canonicalTruthMessage=canonicalTruthMessages[rawIndex];
       if(canonicalTruthMessage?.role==="assistant")noteStrictAssistantMessage(strictTruthContext,canonicalTruthMessage);
       const text=normalizeText(raw.text); if(!text) continue;
-      const id=await canonicalMessageId({provider:input.provider,conversationId,providerMessageId:raw.providerMessageId || raw.externalId,providerNodeId:raw.providerNodeId,parentProviderNodeId:raw.parentProviderNodeId,branchId:raw.branchId,sequence:raw.sequence,role:raw.role,text});
-      if(localMessageIds.has(id)) continue;
+      const canonicalMessage=await canonicalMessageId({provider:input.provider,conversationId,providerMessageId:raw.providerMessageId || raw.externalId,providerNodeId:raw.providerNodeId,parentProviderNodeId:raw.parentProviderNodeId,branchId:raw.branchId,sequence:raw.sequence,role:raw.role,text});
+      const legacyMessage=await canonicalMessageIdLegacyV9({provider:input.provider,conversationId,providerMessageId:raw.providerMessageId || raw.externalId,providerNodeId:raw.providerNodeId,parentProviderNodeId:raw.parentProviderNodeId,branchId:raw.branchId,sequence:raw.sequence,role:raw.role,text});
+      const currentExists=localMessageIds.has(canonicalMessage); const legacyExists=localMessageIds.has(legacyMessage);
+      if(currentExists&&legacyExists&&canonicalMessage!==legacyMessage){const a=await getOne<MessageRecord>("messages",canonicalMessage);const b=await getOne<MessageRecord>("messages",legacyMessage);const equivalent=Boolean(a&&b&&a.provider===b.provider&&normalizeText(a.role)===normalizeText(b.role)&&normalizeText(a.text)===normalizeText(b.text));requireCompatibleStoredId({canonicalId:canonicalMessage,legacyId:legacyMessage,canonicalExists:true,legacyExists:true,semanticallyEquivalent:equivalent},`message:${raw.providerMessageId??raw.externalId}`);continue;}
+      if(currentExists||legacyExists)continue;
+      const id=canonicalMessage;
       const hash=await sha256(`${BRAIN2_SCHEMA_VERSION}|${input.provider}|${conversationId}|${raw.providerMessageId ?? raw.externalId}|${raw.providerNodeId ?? ""}|${raw.parentProviderNodeId ?? ""}|${raw.branchId ?? ""}|${raw.sequence}|${raw.role}|${text}`);
       const occurredAt=raw.occurredAt;
-      const message:MessageRecord={id,conversationId,sourceId:source.id,provider:input.provider,externalId:raw.externalId || id,role:raw.role,text,createdAt:occurredAt,occurredAt,capturedAt:raw.capturedAt,timestampSource:raw.timestampSource ?? (occurredAt?"archive":"unknown"),sequence:raw.sequence,providerMessageId:raw.providerMessageId,providerNodeId:raw.providerNodeId,parentProviderNodeId:raw.parentProviderNodeId,branchId:raw.branchId,captureId:raw.captureId,captureUrl:raw.captureUrl,captureConnectorId:raw.captureConnectorId,hash,wordCount:wordCount(text),schemaVersion:BRAIN2_SCHEMA_VERSION};
+      const message:MessageRecord={id,conversationId,sourceId:source.id,provider:input.provider,externalId:raw.externalId || id,role:raw.role,text,createdAt:occurredAt,occurredAt,capturedAt:raw.capturedAt,timestampSource:raw.timestampSource ?? (occurredAt?"archive":"unknown"),sequence:raw.sequence,providerMessageId:raw.providerMessageId,providerNodeId:raw.providerNodeId,parentProviderNodeId:raw.parentProviderNodeId,branchId:raw.branchId,captureId:raw.captureId,captureUrl:raw.captureUrl,captureConnectorId:raw.captureConnectorId,hash,wordCount:wordCount(text),...identityCompatibilityMetadata(canonicalMessage,legacyMessage,id),schemaVersion:BRAIN2_SCHEMA_VERSION};
       messageWrites.push(message); localMessageIds.add(id);
 
       const candidates=[...atomizeMessage(text,raw.role),...(strictDerivedCandidates.get(canonicalTruthMessage?.messageKey ?? "") ?? [])];
@@ -1306,8 +1383,18 @@ export async function ingestNormalizedConversation(input: NormalizedConversation
     const blockByMessage=new Map<string,string>();for(const block of evidenceBlocks)for(const id of block.messageIds)blockByMessage.set(id,block.id);
     const messageHasAtoms=new Set(atomWrites.map((atom)=>atom.messageId));
     const searchDocs:PersistentSearchDocument[]=[...messageWrites.map((message)=>searchDocForMessage(message,project.id,messageHasAtoms.has(message.id),blockByMessage.get(message.id))),...atomWrites.map((atom)=>searchDocForAtom(atom,blockByMessage.get(atom.messageId))),...[...truthWritesMap.values()].map(searchDocForTruth)];
-    const mutationPayload=deltaPayload("conversations",{sources:[source],projects:[updatedProject],conversations:[updatedConversation],messages:messageWrites,atoms:atomWrites,truths:[...truthWritesMap.values()],decisions:[...decisionWritesMap.values()],evidenceBlocks});
-    const mutation=await buildMutation(projectCreated?"INGEST_CREATE_PROJECT":"INGEST_CONVERSATION","conversation",conversationId,mutationPayload,existingConversation);
+    const truthWrites=[...truthWritesMap.values()];
+    const mutationType=projectCreated?"INGEST_CREATE_PROJECT":"INGEST_CONVERSATION";
+    const truthContext=currentTruthMutationContext({type:mutationType,entityType:"conversation",entityId:conversationId,memoryRoot:snapshot.memoryRoot});
+    const truthReceipt=containsCurrentTruthWrite(truthWrites)?await issuePolicyR1Allow({
+      action:R1_CURRENT_TRUTH_ACTION,
+      scope:currentTruthAuthorityScope(truthContext),
+      reason:"Strict deterministic human-authored Current Truth policy passed.",
+      evidenceRefs:truthWrites.flatMap((truth)=>truth.evidenceAtomIds??[truth.atomId]),
+    }):undefined;
+    await requireCurrentTruthAuthority({truths:truthWrites,receipt:truthReceipt,context:truthContext,authoritySource:truthReceipt?"POLICY":undefined});
+    const mutationPayload=deltaPayload("conversations",{sources:[source],projects:[updatedProject],conversations:[updatedConversation],messages:messageWrites,atoms:atomWrites,truths:truthWrites,decisions:[...decisionWritesMap.values()],evidenceBlocks},undefined,truthReceipt);
+    const mutation=await buildMutation(mutationType,"conversation",conversationId,mutationPayload,existingConversation);
     journal={...journal,status:"COMMITTING",updatedAt:now(),committedMessageIds:messageWrites.map((item)=>item.id),committedAtomIds:atomWrites.map((item)=>item.id)};
     await put("journals",journal);
     snapshot.journals=mergeById(snapshot.journals,[journal]);
@@ -1497,6 +1584,75 @@ export function getProjectIntelligenceMRSDebugSummary(){
     staleReady:staleReady.slice(0,20),
     missingArtifacts:projectsWithoutArtifacts,
   };
+}
+
+export function getContinuityIntelligence(projectId:string){
+  return findContinuitySnapshot(snapshot.intelligenceSnapshots as unknown as Array<Record<string,unknown>>,projectId);
+}
+
+export async function refreshContinuityIntelligenceSnapshots(projectIds?:string[]){
+  await bootBrain2();
+  const targets=(projectIds?.length?projectIds:[...new Set(snapshot.projects.map((project)=>project.id))]).filter(Boolean);
+  const out:SharedStateSnapshotRecord[]=[];
+  for(const projectId of targets){
+    const project=snapshot.projects.find((item)=>item.id===projectId);if(!project)continue;
+    const [atoms,truths]=await Promise.all([
+      getAllByIndex<AtomRecord>("atoms","byProjectId",projectId),
+      getAllByIndex<TruthRecord>("truths","byProjectId",projectId),
+    ]);
+    const previous=findContinuitySnapshot(snapshot.intelligenceSnapshots as unknown as Array<Record<string,unknown>>,projectId);
+    const built=await buildContinuitySnapshot({
+      project,
+      atoms,
+      truths,
+      ticks:snapshot.ticks.filter((item)=>item.projectId===projectId),
+      failures:snapshot.failureMemories.filter((item)=>!item.projectId||item.projectId===projectId),
+      verifications:snapshot.verifications,
+      previous,
+    });
+    if(previous?.sourceHash===built.snapshot.sourceHash&&!built.atomUpdates.length){out.push(previous as unknown as SharedStateSnapshotRecord);continue;}
+    const record=built.snapshot as unknown as SharedStateSnapshotRecord;
+    const atomUpdates=built.atomUpdates as unknown as AtomRecord[];
+    const writes:MutationDeltaPayload["writes"]={intelligenceSnapshots:[record],...(atomUpdates.length?{atoms:atomUpdates}:{})};
+    const mutation=await buildMutation("CONTINUITY_REFRESH","intelligenceSnapshot",record.id,deltaPayload("intelligenceSnapshots",writes),previous);
+    await atomicPut({intelligenceSnapshots:[record],...(atomUpdates.length?{atoms:atomUpdates}:{}),mutations:[mutation]});
+    if(atomUpdates.length){const hot=atomUpdates.filter((item)=>snapshot.atoms.some((existing)=>existing.id===item.id));snapshot.atoms=mergeById(snapshot.atoms,hot).slice(-HOT_ATOM_LIMIT);}
+    snapshot.intelligenceSnapshots=mergeById(snapshot.intelligenceSnapshots,[record]);
+    snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);
+    setSnapshot({intelligenceSnapshots:snapshot.intelligenceSnapshots,mutations:snapshot.mutations});
+    out.push(record);
+  }
+  return out;
+}
+
+export async function completeContinuityChecklist(projectId:string,itemId:string,proof:{evidenceAtomIds:string[];verificationIds:string[];authorizationRefs:string[]}){
+  await bootBrain2();const current=getContinuityIntelligence(projectId);if(!current)throw new Error("Continuity snapshot not found.");
+  const evidence=await evidenceExists(proof.evidenceAtomIds);if(evidence.size!==new Set(proof.evidenceAtomIds).size)throw new Error("Checklist DONE evidence is missing from canonical storage.");
+  const passIds=new Set(snapshot.verifications.filter((item)=>item.status==="PASS").map((item)=>item.id));if(proof.verificationIds.some((id)=>!passIds.has(id)))throw new Error("Checklist DONE requires PASS verification IDs.");
+  const target=current.checklist.find((item)=>item.id===itemId);if(!target)throw new Error("Continuity checklist item not found.");
+  const proofEvidence=new Set(proof.evidenceAtomIds);
+  const allowed=new Map<string,R1AuthorityReceipt>();
+  for(const mutation of await all<MutationRecord>("mutations")){
+    const receipt=mutation.payload?.r1Authority;if(!receipt||receipt.signal!=="ALLOW"||receipt.version<2)continue;
+    try{await verifyR1AuthorityReceipt(receipt);}catch{continue;}
+    allowed.set(mutation.id,receipt);allowed.set(receipt.hash,receipt);
+  }
+  if(!proof.authorizationRefs.length)throw new Error("Checklist DONE requires an existing R1 ALLOW authorization reference.");
+  for(const ref of proof.authorizationRefs){
+    const receipt=allowed.get(ref);if(!receipt)throw new Error("Checklist DONE authorization reference is not a verified R1 v2 ALLOW.");
+    const evidenceBound=receipt.evidenceRefs.some((evidenceRef)=>proofEvidence.has(evidenceRef));
+    const scopeBound=receipt.scope.includes(itemId)||receipt.scope.includes(target.sourceRefId)||receipt.evidenceRefs.includes(target.sourceRefId);
+    if(!evidenceBound&&!scopeBound)throw new Error("Checklist DONE authorization is not bound to this checklist item or its evidence.");
+  }
+  const next=await completeContinuityChecklistItem(current,itemId,proof);const record=next as unknown as SharedStateSnapshotRecord;const mutation=await buildMutation("CONTINUITY_CHECKLIST_DONE","intelligenceSnapshot",record.id,deltaPayload("intelligenceSnapshots",{intelligenceSnapshots:[record]}),current);await atomicPut({intelligenceSnapshots:[record],mutations:[mutation]});snapshot.intelligenceSnapshots=mergeById(snapshot.intelligenceSnapshots,[record]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({intelligenceSnapshots:snapshot.intelligenceSnapshots,mutations:snapshot.mutations});return next;
+}
+
+export async function recordAvoidedWorkEvent(projectId:string,input:{kind:AvoidedWorkKind;count?:number;estimatedMs?:number}){
+  await bootBrain2();let current=getContinuityIntelligence(projectId);if(!current){await refreshContinuityIntelligenceSnapshots([projectId]);current=getContinuityIntelligence(projectId);}if(!current)throw new Error("Continuity snapshot not found.");const next=await recordAvoidedWork(current,input);const record=next as unknown as SharedStateSnapshotRecord;const mutation=await buildMutation("CONTINUITY_AVOIDED_WORK","intelligenceSnapshot",record.id,deltaPayload("intelligenceSnapshots",{intelligenceSnapshots:[record]}),current);await atomicPut({intelligenceSnapshots:[record],mutations:[mutation]});snapshot.intelligenceSnapshots=mergeById(snapshot.intelligenceSnapshots,[record]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({intelligenceSnapshots:snapshot.intelligenceSnapshots,mutations:snapshot.mutations});return next;
+}
+
+export async function replayGlobalContextAnswer(projectId:string,previousAnswer:string,previousEvidenceIds:string[]){
+  await bootBrain2();const truths=await getAllByIndex<TruthRecord>("truths","byProjectId",projectId);const known=await evidenceExists(previousEvidenceIds);return replayAnswer({projectId,previousAnswer,previousEvidenceIds,knownEvidenceIds:known,truths});
 }
 
 export async function refreshProjectIntelligenceArtifacts(projectIds?:string[]):Promise<DerivedArtifactRecord[]>{
@@ -1891,8 +2047,8 @@ export async function syncCalculatedProjectRiskTicks(projectIds?:string[]):Promi
   return tickWrites;
 }
 
-export async function createTick(input: Pick<TickRecord, "title" | "detail" | "priority"> & { projectId?: string; wakeCondition?: string; evidenceAtomIds?: string[] }): Promise<TickRecord> {
-  await bootBrain2(); const createdAt=now(); const id=await canonicalId("tick",input.projectId,input.title,createdAt); const tick:TickRecord={id,projectId:input.projectId,title:input.title,detail:input.detail,priority:input.priority,status:"OPEN",createdAt,updatedAt:createdAt,wakeCondition:input.wakeCondition,evidenceAtomIds:input.evidenceAtomIds??[]};
+export async function createTick(input: Pick<TickRecord, "title" | "detail" | "priority"> & { projectId?: string; wakeCondition?: string; evidenceAtomIds?: string[]; actionType?: TickRecord["actionType"]; blockingScope?: string[]; permissionScope?: string; contextPackageHash?: string }): Promise<TickRecord> {
+  await bootBrain2(); const createdAt=now(); const id=await canonicalId("tick",input.projectId,input.title,createdAt); const tick:TickRecord={id,projectId:input.projectId,title:input.title,detail:input.detail,priority:input.priority,status:"OPEN",createdAt,updatedAt:createdAt,wakeCondition:input.wakeCondition,evidenceAtomIds:input.evidenceAtomIds??[],actionType:input.actionType,blockingScope:input.blockingScope,permissionScope:input.permissionScope,contextPackageHash:input.contextPackageHash};
   const project=tick.projectId?snapshot.projects.find((item)=>item.id===tick.projectId):undefined;
   const nextProject=project?{...project,openTickIds:[...new Set([...project.openTickIds,tick.id])],updatedAt:now()}:undefined;
   const payload=deltaPayload("ticks",{ticks:[tick],...(nextProject?{projects:[nextProject]}:{})});
@@ -1938,6 +2094,72 @@ export async function checkpointMission(id:string,state:string,note:string){awai
 export async function addVerification(entityType:string,entityId:string,status:VerificationRecord["status"],detail:string){await bootBrain2();const createdAt=now();const id=await canonicalId("verify",entityType,entityId,createdAt);const verification:VerificationRecord={id,entityType,entityId,status,detail,createdAt};const mutation=await buildMutation("CREATE","verification",id,deltaPayload("verifications",{verifications:[verification]}));await atomicPut({verifications:[verification],mutations:[mutation]});snapshot.verifications=mergeById(snapshot.verifications,[verification]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({verifications:snapshot.verifications,mutations:snapshot.mutations});}
 
 export async function addTransaction(type:B2TransactionRecord["type"],payload:string,projectId?:string){await bootBrain2();const createdAt=now();const payloadHash=await sha256(payload);const prior=[...snapshot.transactions].sort((a,b)=>(b.sequence??0)-(a.sequence??0)||b.createdAt.localeCompare(a.createdAt))[0];const sequence=(prior?.sequence??0)+1;const protocolVersion=2;const hash=await sha256(`${protocolVersion}|${type}|${projectId??""}|${payloadHash}|${prior?.id??""}|${sequence}`);const transaction:B2TransactionRecord={id:`b2tx_${hash.slice(0,24)}`,type,projectId,payload,createdAt,hash,payloadHash,parentId:prior?.id,sequence,protocolVersion};const mutation=await buildMutation("CREATE","transaction",transaction.id,deltaPayload("transactions",{transactions:[transaction]}));await atomicPut({transactions:[transaction],mutations:[mutation]});snapshot.transactions=mergeById(snapshot.transactions,[transaction]);snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);setSnapshot({transactions:snapshot.transactions,mutations:snapshot.mutations});}
+
+export async function commitVerifiedRuntimeEvidence(
+  result:unknown,
+  structuralVerification:{status:"PASS"|"FAIL"|"PENDING";detail:string},
+){
+  await bootBrain2();
+  const runtime=parseRuntimeExecutionEvidence(result);
+  if(!runtime)return{committed:false,reason:"NOT_RUNTIME_EXECUTION"} as const;
+  if(structuralVerification.status!=="PASS")throw new Error("Runtime evidence cannot commit unless canonical B2RESULT provenance passes.");
+  const parsed=result as {jobId?:string;databoxHash?:string;evidenceIds?:string[]};
+  const jobTx=[...snapshot.transactions].reverse().find((tx)=>tx.type==="B2JOB"&&(()=>{try{return JSON.parse(tx.payload)?.id===parsed.jobId}catch{return false}})());
+  if(!jobTx)throw new Error("Canonical B2JOB is required before runtime evidence commit.");
+  const job=JSON.parse(jobTx.payload) as {id:string;projectId?:string;databox?:{hash?:string};evidence?:Array<{id:string}>};
+  if(!job.projectId||job.projectId!==runtime.projectId)throw new Error("Runtime evidence project scope does not match the canonical B2JOB.");
+  if(job.databox?.hash!==parsed.databoxHash)throw new Error("Runtime evidence Databox hash mismatch.");
+  const allowed=new Set((job.evidence??[]).map((item)=>item.id));
+  if(runtime.evidenceIds.some((id)=>!allowed.has(id)))throw new Error("Runtime evidence escaped the canonical B2JOB boundary.");
+  const project=snapshot.projects.find((item)=>item.id===runtime.projectId);
+  if(!project)throw new Error("Runtime evidence project is not present in canonical AI Miner memory.");
+
+  const sourceId=await canonicalId("source","generic","brain2-runtime-v1");
+  const conversationId=await canonicalId("conversation","generic",`brain2-runtime:${runtime.projectId}`);
+  const messageId=await canonicalId("message","brain2-runtime",runtime.runtimeJobId);
+  const atomId=await canonicalId("atom","brain2-runtime",runtime.runtimeJobId,runtime.capability);
+  const truthId=await canonicalId("truth","brain2-runtime",runtime.runtimeJobId,runtime.capability);
+  const existingTruth=await getOne<TruthRecord>("truths",truthId);
+  if(existingTruth)return{committed:false,reason:"ALREADY_COMMITTED",truthId,atomId} as const;
+
+  const createdAt=runtime.executionResult.finishedAt??new Date().toISOString();
+  const existingSource=await getOne<SourceRecord>("sources",sourceId);
+  const source:SourceRecord=existingSource?{...existingSource,lastSeenAt:createdAt}:{id:sourceId,provider:"generic",label:"Brain2 Runtime",sourceType:"Verified bounded runtime execution",createdAt,lastSeenAt:createdAt,schemaVersion:BRAIN2_SCHEMA_VERSION};
+  const existingConversation=await getOne<ConversationRecord>("conversations",conversationId);
+  const messageHash=await sha256(runtime.observedStatement);
+  const message:MessageRecord={id:messageId,conversationId,sourceId,provider:"generic",externalId:runtime.runtimeJobId,role:"tool",text:runtime.observedStatement,createdAt,occurredAt:createdAt,capturedAt:createdAt,timestampSource:"capture",sequence:(existingConversation?.messageCount??0)+1,hash:messageHash,wordCount:wordCount(runtime.observedStatement),schemaVersion:BRAIN2_SCHEMA_VERSION};
+  const conversation:ConversationRecord={id:conversationId,sourceId,provider:"generic",externalId:`brain2-runtime:${runtime.projectId}`,title:`Brain2 Runtime - ${project.name}`,createdAt:existingConversation?.createdAt??createdAt,updatedAt:createdAt,projectId:runtime.projectId,messageCount:(existingConversation?.messageCount??0)+1,wordCount:(existingConversation?.wordCount??0)+message.wordCount,schemaVersion:BRAIN2_SCHEMA_VERSION};
+  const scope=`runtime:${runtime.capability}:${runtime.runtimeJobId}`;
+  const atomHash=await sha256(`${runtime.runtimeJobId}|${runtime.capability}|${runtime.observedStatement}|${runtime.executionResult.outputHashes.join(",")}`);
+  const atom:AtomRecord={id:atomId,messageId,conversationId,projectId:runtime.projectId,sourceId,kind:"fact",subject:`Verified runtime execution ${runtime.runtimeJobId}`,canonicalSubject:`runtime.${runtime.capability}.${runtime.runtimeJobId}`,value:runtime.executionResult.outputHashes.join(","),scope,text:runtime.observedStatement,createdAt,confidence:1,provenance:[...runtime.evidenceIds,`runtime-job:${runtime.runtimeJobId}`],keywords:indexTerms(`${runtime.capability} ${runtime.observedStatement}`,16),hash:atomHash,truthStatus:"CURRENT",truthRelation:"NEW",truthRecordId:truthId,ruleTrace:["runtime:verified","runtime:r1_authorized","runtime:mechanical_observation","r2:no_direct_promotion"],relationSafe:true,extractionVersion:"B2_RUNTIME_EVIDENCE_V1",schemaVersion:BRAIN2_SCHEMA_VERSION};
+  const truth:TruthRecord={id:truthId,key:`runtime:${runtime.runtimeJobId}:${runtime.capability}`,projectId:runtime.projectId,conversationId,sourceId,atomId,text:runtime.observedStatement,kind:"fact",status:"CURRENT",confidence:1,createdAt,updatedAt:createdAt,relation:"NEW",evidenceAtomIds:[atomId],canonicalSubject:atom.canonicalSubject,value:atom.value,scope,reconciliationVersion:"B2_RUNTIME_EVIDENCE_V1",schemaVersion:BRAIN2_SCHEMA_VERSION};
+  const updatedProject:ProjectRecord={...project,updatedAt:createdAt,conversationIds:[...new Set([...project.conversationIds,conversationId])],atomIds:[...new Set([...project.atomIds,atomId])],recentAtomIds:[atomId,...(project.recentAtomIds??[]).filter((id)=>id!==atomId)].slice(0,120),atomCount:(project.atomCount??project.atomIds.length)+1};
+  const writes:MutationDeltaPayload["writes"]={sources:[source],conversations:[conversation],messages:[message],atoms:[atom],truths:[truth],projects:[updatedProject]};
+  const runtimeContext=currentTruthMutationContext({type:"CREATE",entityType:"runtimeEvidence",entityId:truthId,memoryRoot:snapshot.memoryRoot});
+  const runtimeReceipt=await issueVerifierR1({
+    signal:runtime.executionResult.verifierResult.authorization,
+    action:R1_CURRENT_TRUTH_ACTION,
+    scope:currentTruthAuthorityScope(runtimeContext),
+    reason:"Independent runtime verifier authorized the bounded mechanical observation.",
+    evidenceRefs:runtime.evidenceIds,
+  });
+  await requireCurrentTruthAuthority({truths:[truth],receipt:runtimeReceipt,context:runtimeContext,authoritySource:"INDEPENDENT_VERIFIER"});
+  const payload=deltaPayload("truths",writes,undefined,runtimeReceipt);
+  const mutation=await buildMutation("CREATE","runtimeEvidence",truthId,payload);
+  const searchDocs=await searchDocsForDelta(payload);
+  await atomicPut({sources:[source],conversations:[conversation],messages:[message],atoms:[atom],truths:[truth],projects:[updatedProject],mutations:[mutation],...(searchDocs.writes.length?{searchDocs:searchDocs.writes}:{})});
+  snapshot.sources=mergeById(snapshot.sources,[source]);
+  snapshot.conversations=mergeById(snapshot.conversations,[conversation]);
+  snapshot.messages=mergeById(snapshot.messages,[message]).slice(-HOT_MESSAGE_LIMIT);
+  snapshot.atoms=mergeById(snapshot.atoms,[atom]).slice(-HOT_ATOM_LIMIT);
+  snapshot.truths=mergeById(snapshot.truths,[truth]);
+  snapshot.projects=mergeById(snapshot.projects,[updatedProject]);
+  snapshot.mutations=mergeById(snapshot.mutations,[mutation]).slice(-RECENT_EVENT_LIMIT);
+  snapshot.storage={...snapshot.storage,totalMessages:snapshot.storage.totalMessages+1,totalAtoms:snapshot.storage.totalAtoms+1,totalTruths:snapshot.storage.totalTruths+1,totalConversations:snapshot.storage.totalConversations+(existingConversation?0:1),indexedDocuments:snapshot.storage.indexedDocuments+searchDocs.writes.length,hotMessages:Math.min(HOT_MESSAGE_LIMIT,snapshot.storage.hotMessages+1),hotAtoms:Math.min(HOT_ATOM_LIMIT,snapshot.storage.hotAtoms+1)};
+  setSnapshot({sources:snapshot.sources,conversations:snapshot.conversations,messages:snapshot.messages,atoms:snapshot.atoms,truths:snapshot.truths,projects:snapshot.projects,mutations:snapshot.mutations,storage:snapshot.storage});
+  scheduleDerivedPatternsRefresh([runtime.projectId]);
+  return{committed:true,truthId,atomId,projectId:runtime.projectId,hypothesisId:runtime.hypothesisId,r2Action:"RECALCULATE_FROM_UPDATED_R1"} as const;
+}
 
 export async function refreshDerivedPatterns(){await bootBrain2();const conflicting=await getAllByIndex<TruthRecord>("truths","byStatus","CONFLICTING");const conflictingAtomIds=new Set(conflicting.flatMap((truth)=>truth.evidenceAtomIds??[truth.atomId]));const aggregates=new Map<string,PatternAggregate>();let key:IDBValidKey|undefined;while(true){const page=await pagedPrimaryRead<AtomRecord>("atoms",key,SEARCH_INDEX_BATCH);for(const atom of page.items)accumulatePattern(aggregates,atom,conflictingAtomIds);key=page.lastKey;if(page.items.length<SEARCH_INDEX_BATCH)break;await new Promise((resolve)=>setTimeout(resolve,0));}const patterns=await buildPatternsFromAggregates(aggregates.values(),250,snapshot.patternTests);const db=await openDb();await new Promise<void>((resolve,reject)=>{const tx=db.transaction(["patterns","meta"],"readwrite");const store=tx.objectStore("patterns");store.clear();for(const pattern of patterns)store.put(pattern);tx.objectStore("meta").put({id:"patternVersion",value:BRAIN2_PATTERN_VERSION});tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error("Pattern rebuild aborted"));});snapshot.patterns=patterns;invalidateRuntimeIndex();}
 
@@ -2135,6 +2357,23 @@ export function currentBrain2MemoryRoot(){return snapshot.memoryRoot;}
 
 export async function getSyncReplicaSummary(){await bootBrain2();return{deviceId:currentBrain2DeviceId(),memoryRoot:snapshot.memoryRoot,totalMessages:snapshot.storage.totalMessages,totalAtoms:snapshot.storage.totalAtoms,totalTruths:snapshot.storage.totalTruths,latestLocalSequence:mutationSequence,conflicts:snapshot.syncConflicts.filter((item)=>item.status==="OPEN").length};}
 
+export async function getG11SyncProofMaterial(){
+  await bootBrain2();
+  const db=await openDb();
+  const readAll=<T>(table:TableName)=>new Promise<T[]>((resolve,reject)=>{
+    const tx=db.transaction(table,"readonly");
+    const request=tx.objectStore(table).getAll();
+    request.onsuccess=()=>resolve(request.result as T[]);
+    request.onerror=()=>reject(request.error);
+  });
+  const [truths,mutations,summary]=await Promise.all([
+    readAll<TruthRecord>("truths"),
+    readAll<MutationRecord>("mutations"),
+    getSyncReplicaSummary(),
+  ]);
+  return {truths,mutations,summary,snapshotVersion:snapshot.version};
+}
+
 export async function adoptMemoryRootIfEmpty(memoryRoot:string){await bootBrain2();if(!memoryRoot)throw new Error("Missing Brain2 memory root.");if(snapshot.memoryRoot===memoryRoot)return;if(snapshot.storage.totalMessages||snapshot.storage.totalAtoms||snapshot.projects.length||snapshot.truths.length)throw new Error("This browser already contains a different Brain2 memory. Export/reset it before joining another memory root.");await metaPut("memoryRoot",memoryRoot);snapshot.memoryRoot=memoryRoot;const device=await ensureWebDevice(memoryRoot);snapshot.devices=mergeById(snapshot.devices,[device]);setSnapshot({memoryRoot,devices:snapshot.devices});}
 
 async function upsertSyncPeerInternal(peerDeviceId:string,patch:Partial<SyncPeerRecord>={}){await bootBrain2();const id=`peer_${peerDeviceId}`;const existing=await getOne<SyncPeerRecord>("syncPeers",id);const peer:SyncPeerRecord={id,deviceId:currentBrain2DeviceId(),peerDeviceId,memoryRoot:snapshot.memoryRoot,status:"DISCONNECTED",lastPushedSequence:0,lastAppliedPeerSequence:0,pendingDeltas:0,transport:"WEBRTC",...existing,...patch};await put("syncPeers",peer);snapshot.syncPeers=mergeById(snapshot.syncPeers,[peer]);setSnapshot({syncPeers:snapshot.syncPeers});return peer;}
@@ -2158,7 +2397,7 @@ async function searchDocsForDelta(payload:MutationDeltaPayload):Promise<{writes:
 
 function applyDeltaPayloadToHotSnapshot(payload:MutationDeltaPayload){
   const merge=(key:keyof Brain2Snapshot,limit?:number)=>{const incoming=(payload.writes as Record<string,AnyRecord[]|undefined>)[String(key)]??[];if(!incoming.length&&!((payload.deletes as Record<string,string[]|undefined>|undefined)?.[String(key)]?.length))return;const current=((snapshot as unknown as Record<string,unknown>)[String(key)]??[]) as AnyRecord[];const deleted=new Set((payload.deletes as Record<string,string[]|undefined>|undefined)?.[String(key)]??[]);let next=mergeById(current.filter((item)=>!deleted.has(item.id)),incoming);if(limit)next=next.slice(-limit);(snapshot as unknown as Record<string,unknown>)[String(key)]=next;};
-  merge("sources");merge("conversations");merge("messages",HOT_MESSAGE_LIMIT);merge("atoms",HOT_ATOM_LIMIT);merge("truths");merge("projects");merge("ticks");merge("decisions");merge("patterns");merge("experiments");merge("missions");merge("checkpoints");merge("verifications");merge("transactions",RECENT_EVENT_LIMIT);merge("patternTests");merge("portableExpertise");merge("compiledCapabilities");merge("reasoningTrajectories");merge("failureMemories");merge("databoxes");merge("evidenceBlocks",500);
+  merge("sources");merge("conversations");merge("messages",HOT_MESSAGE_LIMIT);merge("atoms",HOT_ATOM_LIMIT);merge("truths");merge("projects");merge("ticks");merge("decisions");merge("patterns");merge("experiments");merge("missions");merge("checkpoints");merge("verifications");merge("transactions",RECENT_EVENT_LIMIT);merge("patternTests");merge("portableExpertise");merge("compiledCapabilities");merge("reasoningTrajectories");merge("failureMemories");merge("databoxes");merge("evidenceBlocks",500);merge("mrsRuns");merge("intelligenceSnapshots");merge("wikiSnapshots");merge("notebookSnapshots");
 }
 
 async function flushDerivedPatternsRefreshQueue():Promise<void>{
@@ -2171,7 +2410,8 @@ async function flushDerivedPatternsRefreshQueue():Promise<void>{
         derivedRefreshProjectIds.clear();
         await refreshDerivedPatterns();
         await refreshProjectIntelligenceArtifacts(targets.length?targets:undefined);
-        setSnapshot({patterns:snapshot.patterns,derivedArtifacts:snapshot.derivedArtifacts});
+        await refreshContinuityIntelligenceSnapshots(targets.length?targets:undefined);
+        setSnapshot({patterns:snapshot.patterns,derivedArtifacts:snapshot.derivedArtifacts,intelligenceSnapshots:snapshot.intelligenceSnapshots});
         const pendingMRSProjectIds=getProjectsWithPendingMRS().filter((projectId)=>!targets.length||targets.includes(projectId));
         brain2MRSLog("derived-refresh.queue-mrs", { targetCount: targets.length, pendingMRSProjects: pendingMRSProjectIds.length });
         if(pendingMRSProjectIds.length){
@@ -2199,7 +2439,13 @@ function scheduleDerivedPatternsRefresh(projectIds?:string[]){
 
 async function atomicApplyRemote(mutation:MutationRecord,peerDeviceId:string,transport:"WEBRTC"|"HTTPS"|"B2_NETWORK"){
   if(!mutation.payload)throw new Error("Replicated mutation has no payload.");
-  const payload=mutation.payload;const primaryTable=payload.primaryTable;let localHash:string|undefined;
+  const payload=mutation.payload;
+  await requireCurrentTruthAuthorityForMutation({
+    writes:payload.writes,
+    receipt:payload.r1Authority,
+    context:currentTruthMutationContext({type:mutation.type,entityType:mutation.entityType,entityId:mutation.entityId,memoryRoot:mutation.memoryRoot??snapshot.memoryRoot}),
+  });
+  const primaryTable=payload.primaryTable;let localHash:string|undefined;
   if(primaryTable){const existing=await getOne<AnyRecord>(primaryTable,mutation.entityId);if(existing)localHash=await hashEntity(existing);if(mutation.beforeHash&&existing&&localHash!==mutation.beforeHash&&localHash!==mutation.afterHash){const conflict:SyncConflictRecord={id:`conflict_${mutation.id}`,mutationId:mutation.id,peerDeviceId,entityType:mutation.entityType,entityId:mutation.entityId,expectedBeforeHash:mutation.beforeHash,localHash,incomingAfterHash:mutation.afterHash,status:"OPEN",createdAt:now(),detail:"Concurrent state diverged from the mutation base. Brain2 preserved the conflict instead of silently applying last-write-wins."};const rejected:{id:string;[key:string]:unknown}={...mutation,replicationStatus:"CONFLICT",receivedAt:now(),sourceTransport:transport};await atomicPut({mutations:[rejected],syncConflicts:[conflict]});snapshot.syncConflicts=mergeById(snapshot.syncConflicts,[conflict]);return{applied:false,conflict};}}
   const writeTables=Object.entries(payload.writes).filter(([table,records])=>SYNC_TABLE_SET.has(table)&&Array.isArray(records)&&records.length) as Array<[SyncTableName,AnyRecord[]]>;
   const readerDocs=await searchDocsForDelta(payload);
@@ -2213,13 +2459,76 @@ async function atomicApplyRemote(mutation:MutationRecord,peerDeviceId:string,tra
 
 export async function applyReplicatedMutations(peerDeviceId:string,incoming:MutationRecord[],transport:"WEBRTC"|"HTTPS"|"B2_NETWORK"="WEBRTC"){
   await bootBrain2();const peer=await upsertSyncPeerInternal(peerDeviceId,{status:"SYNCING",transport});const sorted=[...incoming].sort((a,b)=>(a.originSequence??a.sequence??0)-(b.originSequence??b.sequence??0));const accepted:string[]=[];const rejected:Array<{id:string;reason:string}>=[];let lastApplied=peer.lastAppliedPeerSequence;
-  for(const mutation of sorted){if(await getOne<MutationRecord>("mutations",mutation.id)){lastApplied=Math.max(lastApplied,mutation.originSequence??mutation.sequence??0);accepted.push(mutation.id);continue;}const verification=await verifyMutationEnvelope(mutation);if(!verification.ok){rejected.push({id:mutation.id,reason:verification.reason??"invalid mutation"});continue;}if(mutation.memoryRoot!==snapshot.memoryRoot){rejected.push({id:mutation.id,reason:"memory-root mismatch"});continue;}if((mutation.originDeviceId??mutation.deviceId)!==peerDeviceId){rejected.push({id:mutation.id,reason:"origin device mismatch"});continue;}const seq=mutation.originSequence??mutation.sequence??0;if(lastApplied>0&&seq>lastApplied+1){rejected.push({id:mutation.id,reason:`mutation gap: expected ${lastApplied+1}, got ${seq}`});break;}const result=await atomicApplyRemote(mutation,peerDeviceId,transport);if(result.applied){lastApplied=Math.max(lastApplied,seq);accepted.push(mutation.id);}else{rejected.push({id:mutation.id,reason:"concurrent mutation conflict preserved"});break;}}
+  for(const mutation of sorted){if(await getOne<MutationRecord>("mutations",mutation.id)){lastApplied=Math.max(lastApplied,mutation.originSequence??mutation.sequence??0);accepted.push(mutation.id);continue;}const verification=await verifyMutationEnvelope(mutation);if(!verification.ok){rejected.push({id:mutation.id,reason:verification.reason??"invalid mutation"});continue;}if(mutation.memoryRoot!==snapshot.memoryRoot){rejected.push({id:mutation.id,reason:"memory-root mismatch"});continue;}if((mutation.originDeviceId??mutation.deviceId)!==peerDeviceId){rejected.push({id:mutation.id,reason:"origin device mismatch"});continue;}const seq=mutation.originSequence??mutation.sequence??0;const gapExpected=brain2MutationGapExpected(lastApplied,seq);if(gapExpected!==null){rejected.push({id:mutation.id,reason:`mutation gap: expected ${gapExpected}, got ${seq}`});break;}const result=await atomicApplyRemote(mutation,peerDeviceId,transport);if(result.applied){lastApplied=Math.max(lastApplied,seq);accepted.push(mutation.id);}else{rejected.push({id:mutation.id,reason:"concurrent mutation conflict preserved"});break;}}
   await upsertSyncPeerInternal(peerDeviceId,{lastAppliedPeerSequence:lastApplied,lastSyncAt:now(),lastSeenAt:now(),status:rejected.length?"CONFLICT":"SYNCED",transport,error:rejected.length?rejected[0].reason:undefined});if(accepted.length){const state=await refreshStorageState();rebuildIngestionIndexes();setSnapshot({sources:snapshot.sources,conversations:snapshot.conversations,messages:snapshot.messages,atoms:snapshot.atoms,truths:snapshot.truths,projects:snapshot.projects,ticks:snapshot.ticks,decisions:snapshot.decisions,patterns:snapshot.patterns,experiments:snapshot.experiments,missions:snapshot.missions,checkpoints:snapshot.checkpoints,verifications:snapshot.verifications,transactions:snapshot.transactions,patternTests:snapshot.patternTests,portableExpertise:snapshot.portableExpertise,compiledCapabilities:snapshot.compiledCapabilities,reasoningTrajectories:snapshot.reasoningTrajectories,failureMemories:snapshot.failureMemories,databoxes:snapshot.databoxes,evidenceBlocks:snapshot.evidenceBlocks,mutations:snapshot.mutations,syncPeers:snapshot.syncPeers,storage:state});const deltaPayloads=sorted.map((m)=>m.payload).filter((payload):payload is MutationDeltaPayload=>Boolean(payload));if(deltaPayloads.some((payload)=>Boolean(payload.writes.atoms?.length||payload.writes.truths?.length))){scheduleDerivedPatternsRefresh(collectProjectIdsFromDeltaPayloads(deltaPayloads));}}return{accepted,rejected,lastAppliedSequence:lastApplied};
 }
 
 export async function streamSyncBootstrap(onChunk:(chunk:{table:SyncTableName|"mutations";records:AnyRecord[];ordinal:number})=>Promise<void>){await bootBrain2();let ordinal=0;for(const table of [...SYNC_TABLES,"mutations" as const]){let key:IDBValidKey|undefined;while(true){const page=await pagedPrimaryRead<AnyRecord>(table,key,100);for(const records of packBootstrapRecords(page.items)){await onChunk({table,records,ordinal:ordinal++});}key=page.lastKey;if(page.items.length<100)break;await new Promise((resolve)=>setTimeout(resolve,0));}}return ordinal;}
 
-export async function applySyncBootstrapChunk(memoryRoot:string,table:SyncTableName|"mutations",records:AnyRecord[]){await bootBrain2();if(snapshot.memoryRoot!==memoryRoot)throw new Error("Bootstrap memory-root mismatch.");if(snapshot.storage.totalMessages>0)throw new Error("Bootstrap is only allowed into an empty Brain2 replica. Existing replicas use mutation sync.");if(table!=="mutations"&&!SYNC_TABLE_SET.has(table))throw new Error("Unsupported bootstrap table.");await putMany(table,records);}
+export async function streamSyncMergeSnapshot(
+  onChunk: (chunk: {table: SyncTableName; records: AnyRecord[]; ordinal: number}) => Promise<void>,
+) {
+  await bootBrain2();
+  let ordinal = 0;
+  for (const table of SYNC_TABLES) {
+    let key: IDBValidKey | undefined;
+    while (true) {
+      const page = await pagedPrimaryRead<AnyRecord>(table, key, 100);
+      for (const records of packBootstrapRecords(page.items)) {
+        await onChunk({ table, records, ordinal: ordinal++ });
+      }
+      key = page.lastKey;
+      if (page.items.length < 100) break;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+  return ordinal;
+}
+
+export async function applySyncMergeChunk(
+  targetRoot: string,
+  table: string,
+  records: AnyRecord[],
+  authority?:{receipt?:R1AuthorityReceipt;sourceRoot:string;sourceDeviceId:string;targetDeviceId:string;mergeId:string},
+) {
+  await bootBrain2();
+  if (snapshot.memoryRoot !== targetRoot) {
+    throw new Error("Merge target memory-root mismatch.");
+  }
+  if (!SYNC_TABLE_SET.has(table)) {
+    throw new Error(`Unsupported merge table: ${table}`);
+  }
+
+  const typedTable = table as SyncTableName;
+  if(typedTable==="truths"&&containsCurrentTruthWrite(records as Record<string,unknown>[])){
+    if(!authority)throw new Error("R1 merge authority is required for Current Truth.");
+    await requireCurrentTruthAuthority({truths:records as Record<string,unknown>[],receipt:authority.receipt,context:currentTruthMergeContext({sourceRoot:authority.sourceRoot,targetRoot,sourceDeviceId:authority.sourceDeviceId,targetDeviceId:authority.targetDeviceId,mergeId:authority.mergeId}),authoritySource:"EXPLICIT_USER_ACTION"});
+  }
+  const writes: AnyRecord[] = [];
+  for (const incoming of records) {
+    const id = String(incoming.id ?? "");
+    if (!id) continue;
+    const local = await getOne<AnyRecord>(typedTable, id);
+    if (!local) {
+      writes.push(incoming);
+      continue;
+    }
+    const winner = await brain2MergeWinner(local, incoming);
+    if (canonicalJson(local) !== canonicalJson(winner)) writes.push(winner);
+  }
+  await putMany(typedTable, writes);
+  return writes.length;
+}
+
+export async function finalizeSyncMemoryMerge() {
+  await reloadBrain2FromDisk();
+  setTimeout(() => {
+    void rebuildPersistentSearchIndex();
+    scheduleDeferredDerivations({delayMs: 1200, idleTimeoutMs: 9000});
+  }, 0);
+}
+
+export async function applySyncBootstrapChunk(memoryRoot:string,table:SyncTableName|"mutations",records:AnyRecord[],authority?:{receipt?:R1AuthorityReceipt;sourceDeviceId:string;targetDeviceId:string;ordinal:number;chunkHash:string}){await bootBrain2();if(snapshot.memoryRoot!==memoryRoot)throw new Error("Bootstrap memory-root mismatch.");if(snapshot.storage.totalMessages>0)throw new Error("Bootstrap is only allowed into an empty Brain2 replica. Existing replicas use mutation sync.");if(table!=="mutations"&&!SYNC_TABLE_SET.has(table))throw new Error("Unsupported bootstrap table.");if(table==="truths"){const truths=records as Record<string,unknown>[];if(containsCurrentTruthWrite(truths)){if(!authority)throw new Error("R1 bootstrap authority is required for Current Truth.");await requireCurrentTruthAuthority({truths,receipt:authority.receipt,context:currentTruthBootstrapContext({memoryRoot,sourceDeviceId:authority.sourceDeviceId,targetDeviceId:authority.targetDeviceId,ordinal:authority.ordinal,chunkHash:authority.chunkHash}),authoritySource:"POLICY"});}}await putMany(table,records);}
 export async function finalizeSyncBootstrap(){await reloadBrain2FromDisk();setTimeout(()=>{void rebuildPersistentSearchIndex();scheduleDeferredDerivations({delayMs:1200,idleTimeoutMs:9000});},0);}
 
 export async function reloadBrain2FromDisk(){clearScheduledRefreshWork();snapshot={...emptySnapshot,storage:{...emptyStorage}};mutationSequence=0;secondaryBootHydrationPromise=null;rebuildIngestionIndexes();await bootBrain2();}
@@ -2241,7 +2550,7 @@ async function buildB2MPayload(){
 export async function exportB2M(passphrase?:string):Promise<Blob>{return runBrain2ForegroundTask("B2M_EXPORT",async()=>{await bootBrain2();const startedAt=performanceNow();const payload=JSON.stringify(await buildB2MPayload());if(!passphrase){await recordResponsivenessTelemetry("b2m.export_total",performanceNow()-startedAt,{encrypted:false,sizeBytes:payload.length});return new Blob([payload],{type:"application/vnd.brain2.b2m+json"});}const salt=crypto.getRandomValues(new Uint8Array(16));const iv=crypto.getRandomValues(new Uint8Array(12));const baseKey=await crypto.subtle.importKey("raw",new TextEncoder().encode(passphrase),"PBKDF2",false,["deriveKey"]);const key=await crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations:200000},baseKey,{name:"AES-GCM",length:256},false,["encrypt"]);const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(payload));const encoded={format:"B2M-ENCRYPTED",version:4,kdf:"PBKDF2-SHA256-200000",cipher:"AES-256-GCM",salt:btoa(String.fromCharCode(...salt)),iv:btoa(String.fromCharCode(...iv)),data:btoa(String.fromCharCode(...new Uint8Array(ciphertext)))};const out=JSON.stringify(encoded);await recordResponsivenessTelemetry("b2m.export_total",performanceNow()-startedAt,{encrypted:true,sizeBytes:out.length});return new Blob([out],{type:"application/vnd.brain2.b2m+json"});});}
 function fromBase64(value:string){return Uint8Array.from(atob(value),(char)=>char.charCodeAt(0));}
 export async function importB2M(file:File,passphrase?:string):Promise<void>{return runBrain2ForegroundTask("B2M_IMPORT",async()=>{await bootBrain2();const startedAt=performanceNow();const raw=JSON.parse(await file.text());let payload=raw;if(raw.format==="B2M-ENCRYPTED"){if(!passphrase)throw new Error("This .B2M is encrypted. Enter its passphrase.");const salt=fromBase64(raw.salt);const iv=fromBase64(raw.iv);const cipher=fromBase64(raw.data);const baseKey=await crypto.subtle.importKey("raw",new TextEncoder().encode(passphrase),"PBKDF2",false,["deriveKey"]);const key=await crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations:200000},baseKey,{name:"AES-GCM",length:256},false,["decrypt"]);const clear=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,cipher);payload=JSON.parse(new TextDecoder().decode(clear));}
-  if(payload.format!=="B2M"||!payload.tables)throw new Error("Not a supported Brain2 .B2M package.");if(snapshot.memoryRoot&&payload.memoryRoot&&snapshot.memoryRoot!==payload.memoryRoot&&snapshot.storage.totalMessages)throw new Error("Memory-root mismatch. Import into an empty Brain2 profile or use a matching .B2M root.");if(payload.manifest?.tableHashes){for(const [table,expected] of Object.entries(payload.manifest.tableHashes as Record<string,string>)){const actual=await sha256(JSON.stringify(payload.tables[table]??[]));if(actual!==expected)throw new Error(`.B2M integrity check failed for ${table}.`);}}
+  if(payload.format!=="B2M"||!payload.tables)throw new Error("Not a supported Brain2 .B2M package.");payload.tables={...payload.tables};if(!Array.isArray(payload.tables.compiledCapabilities)&&Array.isArray(payload.tables.capabilities))payload.tables.compiledCapabilities=payload.tables.capabilities;if(!Array.isArray(payload.tables.failureMemories)&&Array.isArray(payload.tables.failureMemory))payload.tables.failureMemories=payload.tables.failureMemory;if(snapshot.memoryRoot&&payload.memoryRoot&&snapshot.memoryRoot!==payload.memoryRoot&&snapshot.storage.totalMessages)throw new Error("Memory-root mismatch. Import into an empty Brain2 profile or use a matching .B2M root.");if(payload.manifest?.tableHashes){for(const [table,expected] of Object.entries(payload.manifest.tableHashes as Record<string,string>)){const actual=await sha256(JSON.stringify(payload.tables[table]??[]));if(actual!==expected)throw new Error(`.B2M integrity check failed for ${table}.`);}}
   const manifest=payload.manifest as Record<string,unknown>|undefined;
   if(manifest?.currentTruthRoot||manifest?.providerNeutralCurrentTruthRoot||manifest?.sourceEvidenceRoot){
     const actual=await buildB2MIntegrity(payload.tables as Record<string,unknown>);
@@ -2250,6 +2559,17 @@ export async function importB2M(file:File,passphrase?:string):Promise<void>{retu
       if(typeof expected!=="string")throw new Error(`.B2M integrity check missing ${key}.`);
       if(actual[key]!==expected)throw new Error(`.B2M integrity check failed for ${key}.`);
     }
+  }
+  const importedTruths=(Array.isArray(payload.tables.truths)?payload.tables.truths:[]) as TruthRecord[];
+  const importedIntegrity=await buildB2MIntegrity(payload.tables as Record<string,unknown>);
+  const tableHashesForScope:Record<string,string>={};for(const [table,value] of Object.entries(payload.tables as Record<string,unknown>)){tableHashesForScope[table]=await sha256(JSON.stringify(value));}
+  const stateHashForScope=await sha256(Object.entries(tableHashesForScope).sort(([a],[b])=>a.localeCompare(b)).map(([table,hash])=>`${table}:${hash}`).join("|"));
+  if(typeof manifest?.stateHash==="string"&&manifest.stateHash!==stateHashForScope)throw new Error(".B2M integrity check failed for stateHash.");
+  let importReceipt:R1AuthorityReceipt|undefined;
+  if(containsCurrentTruthWrite(importedTruths as unknown as Record<string,unknown>[])){
+    const importContext=currentTruthB2MImportContext({memoryRoot:String(payload.memoryRoot??""),stateHash:stateHashForScope,currentTruthRoot:importedIntegrity.currentTruthRoot});
+    importReceipt=await issueUserR1Allow({action:R1_CURRENT_TRUTH_ACTION,scope:currentTruthAuthorityScope(importContext),reason:"Explicit user .B2M import approved existing canonical Current Truth restore.",evidenceRefs:importedTruths.filter((truth)=>truth.status==="CURRENT").flatMap((truth)=>truth.evidenceAtomIds??[truth.atomId])});
+    await requireCurrentTruthAuthority({truths:importedTruths,receipt:importReceipt,context:importContext,authoritySource:"EXPLICIT_USER_ACTION"});
   }
   clearScheduledRefreshWork();
   const db=await openDb();const restoreTables=TABLES.filter((item):item is DataTableName=>item!=="meta"&&item!=="searchDocs");await new Promise<void>((resolve,reject)=>{const tx=db.transaction([...restoreTables,"searchDocs","meta"],"readwrite");for(const table of restoreTables){const store=tx.objectStore(table);store.clear();for(const value of Array.isArray(payload.tables[table])?payload.tables[table]:[])store.put(value);}tx.objectStore("searchDocs").clear();tx.objectStore("meta").put({id:"memoryRoot",value:payload.memoryRoot});tx.objectStore("meta").delete("searchIndexVersion");tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error(".B2M atomic restore aborted"));});snapshot={...emptySnapshot,storage:{...emptyStorage}};secondaryBootHydrationPromise=null;rebuildIngestionIndexes();await bootBrain2();setTimeout(()=>{void rebuildPersistentSearchIndex();scheduleDeferredDerivations({delayMs:1200,idleTimeoutMs:9000});},0);await recordResponsivenessTelemetry("b2m.import_total",performanceNow()-startedAt,{encrypted:Boolean(raw.format==="B2M-ENCRYPTED"),fileName:file.name});});}

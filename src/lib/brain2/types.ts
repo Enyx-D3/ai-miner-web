@@ -1,3 +1,4 @@
+import type { R1AuthorityReceipt } from "./r1Authority";
 export type Brain2Provider = "chatgpt" | "claude" | "gemini" | "generic";
 export type AtomKind = "decision" | "constraint" | "question" | "idea" | "fact" | "task" | "statement";
 export type TruthStatus = "CURRENT" | "SUPERSEDED" | "HISTORICAL" | "CONFLICTING" | "UNKNOWN" | "PENDING_REVIEW";
@@ -9,6 +10,8 @@ export type TimestampSource = "provider" | "archive" | "dom" | "capture" | "unkn
 export type JournalStatus = "RECEIVED" | "NORMALIZED" | "COMMITTING" | "COMMITTED" | "DERIVED" | "FAILED";
 export type PatternMaturity = "L0_FRAGMENT" | "L1_OBSERVATION" | "L2_CANDIDATE" | "L3_HYPOTHESIS" | "L4_SUPPORTED" | "L5_REPLICATED" | "L6_GENERALIZED" | "L7_PORTABLE_EXPERTISE" | "L8_CANON";
 
+export type IdentityCompatibilityFields = { identityCanonicalId?: string; identityLegacyIds?: string[]; identityStoredId?: string; identityCompatibilityVersion?: string };
+
 export type SourceRecord = {
   id: string;
   provider: Brain2Provider;
@@ -16,6 +19,7 @@ export type SourceRecord = {
   sourceType: string;
   createdAt: string;
   lastSeenAt: string;
+  identityCanonicalId?: string; identityLegacyIds?: string[]; identityStoredId?: string; identityCompatibilityVersion?: string;
   schemaVersion?: number;
 };
 
@@ -33,6 +37,7 @@ export type ConversationRecord = {
   selectedBranchId?: string;
   branchIds?: string[];
   projectResolutionConfidence?: number;
+  identityCanonicalId?: string; identityLegacyIds?: string[]; identityStoredId?: string; identityCompatibilityVersion?: string;
   schemaVersion?: number;
 };
 
@@ -59,6 +64,7 @@ export type MessageRecord = {
   captureId?: string;
   captureUrl?: string;
   captureConnectorId?: string;
+  identityCanonicalId?: string; identityLegacyIds?: string[]; identityStoredId?: string; identityCompatibilityVersion?: string;
   schemaVersion?: number;
 };
 
@@ -93,6 +99,11 @@ export type AtomRecord = {
   supersedesTruthId?: string;
   validFrom?: string;
   validTo?: string;
+  goalId?: string;
+  dependencyIds?: string[];
+  gateId?: string;
+  blockerId?: string;
+  nextAction?: string;
   text: string;
   createdAt?: string;
   confidence: number;
@@ -148,7 +159,8 @@ export type ProjectRecord = {
   schemaVersion?: number;
 };
 
-export type TickRecord = { id: string; projectId?: string; title: string; detail: string; status: TickStatus; priority: "LOW" | "MEDIUM" | "HIGH"; createdAt: string; updatedAt: string; resolution?: string; wakeCondition?: string; evidenceAtomIds: string[] };
+export type TickActionType = "APPROVE" | "DECIDE" | "CONFLICT" | "UNCERTAIN" | "VERIFY" | "BLOCKER" | "RESULT" | "CAPTURE" | "CONTINUE" | "RESUME";
+export type TickRecord = { id: string; projectId?: string; title: string; detail: string; status: TickStatus; priority: "LOW" | "MEDIUM" | "HIGH"; createdAt: string; updatedAt: string; resolution?: string; wakeCondition?: string; evidenceAtomIds: string[]; actionType?: TickActionType; blockingScope?: string[]; permissionScope?: string; contextPackageHash?: string };
 export type DecisionRecord = { id: string; projectId: string; atomId: string; title: string; status: TruthStatus; createdAt?: string; evidenceAtomIds: string[] };
 export type PatternRecord = {
   id: string;
@@ -431,7 +443,7 @@ export type RetrievalTelemetryRecord = {
   returnedCount: number;
   durationMs: number;
   createdAt: string;
-  telemetryKind?: "RETRIEVAL" | "RESPONSIVENESS";
+  telemetryKind?: "RETRIEVAL" | "RESPONSIVENESS" | "FRICTION";
   detailJson?: string;
   schemaVersion?: number;
 };
@@ -439,13 +451,14 @@ export type RetrievalTelemetryRecord = {
 export type ExperimentRecord = { id: string; projectId?: string; title: string; hypothesis: string; status: ExperimentStatus; result?: string; createdAt: string; updatedAt: string; evidenceAtomIds: string[]; validationStatus?: "UNVALIDATED" | "PASS" | "FAIL"; validationDetail?: string; validatedAt?: string };
 export type MissionRecord = { id: string; projectId?: string; title: string; objective: string; status: MissionStatus; createdAt: string; updatedAt: string; checkpointIds: string[]; tickIds: string[]; runtimeCanon?: string; writerId?: string };
 export type CheckpointRecord = { id: string; missionId: string; parentId?: string; state: string; note: string; createdAt: string; hash: string; validationStatus?: "PASS" | "FAIL" | "PENDING"; regressionStatus?: "PASS" | "FAIL" | "PENDING"; commitStatus?: "PREPARED" | "COMMITTED"; reopenedHash?: string };
-export type SyncTableName = "sources" | "conversations" | "messages" | "atoms" | "truths" | "projects" | "ticks" | "decisions" | "patterns" | "experiments" | "missions" | "checkpoints" | "verifications" | "transactions" | "patternTests" | "portableExpertise" | "compiledCapabilities" | "reasoningTrajectories" | "failureMemories" | "databoxes" | "evidenceBlocks";
+export type SyncTableName = "sources" | "conversations" | "messages" | "atoms" | "truths" | "projects" | "ticks" | "decisions" | "patterns" | "experiments" | "missions" | "checkpoints" | "verifications" | "transactions" | "patternTests" | "portableExpertise" | "compiledCapabilities" | "reasoningTrajectories" | "failureMemories" | "databoxes" | "evidenceBlocks" | "mrsRuns" | "intelligenceSnapshots" | "wikiSnapshots" | "notebookSnapshots";
 export type MutationDeltaPayload = {
   version: 1;
   operation: "UPSERT" | "UPSERT_BUNDLE" | "DELETE";
   writes: Partial<Record<SyncTableName, Array<{ id: string; [key: string]: unknown }>>>;
   deletes?: Partial<Record<SyncTableName, string[]>>;
   primaryTable?: SyncTableName;
+  r1Authority?: R1AuthorityReceipt;
 };
 export type MutationRecord = {
   id: string; type: string; entityType: string; entityId: string; createdAt: string; deviceId: string; hash: string;
@@ -504,6 +517,15 @@ export type ContextVaultRunRecord = {
   adapterVersion: string;
 };
 
+export type SharedStateSnapshotRecord = {
+  id: string;
+  projectId: string;
+  createdAt?: string;
+  updatedAt?: string;
+  schemaVersion?: number;
+  [key: string]: unknown;
+};
+
 export type Brain2Snapshot = {
   sources: SourceRecord[];
   conversations: ConversationRecord[];
@@ -532,6 +554,10 @@ export type Brain2Snapshot = {
   databoxes: DataboxRecord[];
   retrievalTelemetry: RetrievalTelemetryRecord[];
   evidenceBlocks: EvidenceBlockRecord[];
+  mrsRuns: SharedStateSnapshotRecord[];
+  intelligenceSnapshots: SharedStateSnapshotRecord[];
+  wikiSnapshots: SharedStateSnapshotRecord[];
+  notebookSnapshots: SharedStateSnapshotRecord[];
   syncPeers: SyncPeerRecord[];
   syncConflicts: SyncConflictRecord[];
   storage: Brain2StorageState;

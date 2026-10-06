@@ -7,6 +7,7 @@ import { startBrain2P2P, stopBrain2P2P } from "@/lib/brain2/p2pSync";
 import type { Brain2Provider as Provider, ExtensionCapture } from "@/lib/brain2/types";
 import { Brain2ModelStatus } from "@/components/brain2/Brain2ModelStatus";
 import { brain2MRSError, brain2MRSLog } from "@/lib/brain2/mrsDebug";
+import { startBrain2McpBrowserBridge } from "@/lib/brain2/mcpBrowserBridge";
 import { autoWarmBrain2TransformersFromCache, getBrain2MRSDebugRuntimeSummary, getBrain2TransformersSnapshot, isBrain2MRSReady, subscribeBrain2Transformers } from "@/lib/brain2/transformersRuntime";
 
 declare global {
@@ -24,6 +25,7 @@ function validCapture(value:unknown):value is ExtensionCapture{
 export function Brain2Provider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.body.dataset.brain2AiMiner="true";
+    const stopMcpBridge=startBrain2McpBrowserBridge();
     window.brain2MRSDebug=()=>({
       runtime:getBrain2MRSDebugRuntimeSummary(),
       projectQueue:getProjectIntelligenceMRSDebugSummary(),
@@ -33,7 +35,7 @@ export function Brain2Provider({ children }: { children: React.ReactNode }) {
       startBrain2P2P();
       if(getProjectsNeedingIntelligenceRefresh().length) scheduleDeferredDerivations({delayMs:1200,idleTimeoutMs:9000});
     }).catch((error)=>{brain2MRSError("boot.failed",{error:error instanceof Error?error.message:String(error)});});
-    return () => { delete document.body.dataset.brain2AiMiner; delete window.brain2MRSDebug; stopBrain2P2P(); };
+    return () => { stopMcpBridge(); delete document.body.dataset.brain2AiMiner; delete window.brain2MRSDebug; stopBrain2P2P(); };
   }, []);
   useEffect(()=>{
     let cancelled=false;

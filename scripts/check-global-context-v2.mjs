@@ -1,0 +1,14 @@
+import fs from "node:fs";
+const read=(p)=>fs.readFileSync(p,"utf8");
+const r1=read("src/lib/brain2/r1Authority.ts");
+const runtime=read("src/lib/brain2/runtimeEvidence.ts");
+const gc=read("src/lib/brain2/globalContext.ts");
+const types=read("src/lib/brain2/types.ts");
+const store=read("src/lib/brain2/store.ts");
+const ui=read("src/features/brain2/Brain2Workspace.tsx");
+for(const token of ["ALLOW","DENY","PAUSE","REVOKE","REQUIRE_TICK","LIMIT_CHANGED"])if(!r1.includes(`"${token}"`))throw new Error(`R1 signal missing ${token}`);
+if(!runtime.includes('authorization !== "ALLOW"')&&!runtime.includes('authorization!=="ALLOW"'))throw new Error("Runtime evidence does not require R1 ALLOW");
+if(!gc.includes("r1Authority")||!gc.includes("issueUserR1Allow"))throw new Error("Handoff does not bind R1 receipt");
+for(const family of ["mrsRuns","intelligenceSnapshots","wikiSnapshots","notebookSnapshots"])if(!types.includes(`${family}: SharedStateSnapshotRecord[]`)||!store.includes(`all<SharedStateSnapshotRecord>("${family}")`))throw new Error(`Hot snapshot parity missing ${family}`);
+if(!ui.includes("projectionFromSharedSnapshots"))throw new Error("Web Notebook/LifeWiki do not consume shared snapshots");
+console.log("Global Context V2 Web static contract PASS");

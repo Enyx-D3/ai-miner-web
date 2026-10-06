@@ -1,40 +1,58 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { jwtDecode } from "jwt-decode";
+import {
+  AUTH_COOKIES,
+  accessTokenFromRequest,
+  authContextFromToken,
+  refreshSupabaseSession,
+  refreshTokenFromRequest,
+  sessionCookieOptions,
+} from "@/server/auth/core";
 
-export function proxy(request: NextRequest) {
-  const token = request.cookies.get("accessToken")?.value;
-  const loginUrl = new URL("/login", request.url);
+export async function proxy(request: NextRequest) {
+  let context = await authContextFromToken(accessTokenFromRequest(request));
+  const refreshed = context ? null : await refreshSupabaseSession(refreshTokenFromRequest(request));
+  if (refreshed) context = await authContextFromToken(refreshed.accessToken);
 
-  // Redirect to login if token is not present
-  if (!token) {
-    const response = NextResponse.redirect(loginUrl);
-    response.headers.set("X-Redirect-Reason", "No Token");
-    return response;
-    // return NextResponse.redirect(loginUrl);
-  }
-
-  try {
-    const user = jwtDecode(token);
-    console.log(user, "user from proxy");
-
-    // check the user role and redirect and restrict here
-  } catch (error) {
-    console.error("Error decoding token:", error);
+  if (!context) {
+    const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", request.nextUrl.pathname + request.nextUrl.search);
-    const response = NextResponse.redirect(loginUrl);
-    response.headers.set("X-Redirect-Reason", "Invalid Token");
-    return response;
+    return NextResponse.redirect(loginUrl);
   }
-
-  // Proceed to the requested route
-  return NextResponse.next();
+  if (!context.entitlement.active) {
+    const subscribeUrl = new URL("/subscribe", request.url);
+    subscribeUrl.searchParams.set("reason", "subscription_required");
+    return NextResponse.redirect(subscribeUrl);
+  }
+  const response = NextResponse.next();
+  if (refreshed) {
+    response.cookies.set(AUTH_COOKIES.access, refreshed.accessToken, sessionCookieOptions(refreshed.expiresIn));
+    response.cookies.set(AUTH_COOKIES.refresh, refreshed.refreshToken, sessionCookieOptions(60 * 60 * 24 * 30));
+  }
+  return response;
 }
 
-// "Matching Paths"
 export const config = {
   matcher: [
-    "/booking",
-    "/booking/:path*",
+    "/dashboard",
+    "/ask",
+    "/continue",
+    "/conversations/:path*",
+    "/decisions",
+    "/devices",
+    "/discover",
+    "/experiments",
+    "/live-notebooks",
+    "/memory",
+    "/missions",
+    "/models",
+    "/operations",
+    "/outputs",
+    "/patterns",
+    "/projects/:path*",
+    "/search",
+    "/ticks",
+    "/timeline",
+    "/wiki",
   ],
 };

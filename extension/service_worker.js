@@ -12,7 +12,8 @@ const STORE={
   lastDeliveredAt:"b2_last_delivered_at",
   vaultMode:"b2_vault_mode",
   deviceKey:"b2_device_key",
-  providerHealth:"b2_provider_health"
+  providerHealth:"b2_provider_health",
+  contextPreview:"gc_context_preview_v1"
 };
 const SESSION={rawKey:"b2_session_raw_key"};
 const encoder=new TextEncoder();
@@ -137,17 +138,18 @@ async function captureLatestActive(){
     const response=await chrome.tabs.sendMessage(tab.id,{type:"BRAIN2_CAPTURE_LATEST"});
     if(response)return response;
   }catch{}
-  await chrome.scripting.executeScript({target:{tabId:tab.id},files:["capture.js"]});
+  await chrome.scripting.executeScript({target:{tabId:tab.id},files:["provider_adapters.js","capture.js"]});
   await new Promise(r=>setTimeout(r,250));
   return chrome.tabs.sendMessage(tab.id,{type:"BRAIN2_CAPTURE_LATEST"});
 }
-async function status(){const count=await queueCount();const installId=await ensureInstallId();const mode=await vaultMode();const ready=await ensureVaultReady();const stored=await chrome.storage.local.get([STORE.origin,STORE.lastError,STORE.queueMode,STORE.lastWebsiteSeenAt,STORE.lastDeliveredAt,STORE.providerHealth]);const origin=stored[STORE.origin]||"";const lastWebsiteSeenAt=stored[STORE.lastWebsiteSeenAt]||"";const heartbeatFresh=Boolean(lastWebsiteSeenAt)&&Date.now()-Date.parse(lastWebsiteSeenAt)<8000;return{ok:true,installId,extensionVersion:manifestVersion(),locked:!ready,vaultMode:mode,queueCount:count,queueWarning:count>=QUEUE_WARNING,queueMode:idbQueue()?.kind||stored[STORE.queueMode]||"legacy-local-v5",origin,configured:Boolean(origin),connected:Boolean(origin&&heartbeatFresh),connectionState:origin?(heartbeatFresh?"CONNECTED":"CONNECTING"):"DISCONNECTED",unlockedAt,lastWebsiteSeenAt,lastDeliveredAt:stored[STORE.lastDeliveredAt]||"",providerHealth:stored[STORE.providerHealth]||{},lastError:stored[STORE.lastError]||""};}
+async function updateContextPreview(preview){const value=preview&&typeof preview==="object"?{...preview,receivedAt:new Date().toISOString()}:null;if(value)await chrome.storage.local.set({[STORE.contextPreview]:value});else await chrome.storage.local.remove(STORE.contextPreview);return{ok:true,contextPreview:value};}
+async function status(){const count=await queueCount();const installId=await ensureInstallId();const mode=await vaultMode();const ready=await ensureVaultReady();const stored=await chrome.storage.local.get([STORE.origin,STORE.lastError,STORE.queueMode,STORE.lastWebsiteSeenAt,STORE.lastDeliveredAt,STORE.providerHealth,STORE.contextPreview]);const origin=stored[STORE.origin]||"";const lastWebsiteSeenAt=stored[STORE.lastWebsiteSeenAt]||"";const heartbeatFresh=Boolean(lastWebsiteSeenAt)&&Date.now()-Date.parse(lastWebsiteSeenAt)<8000;return{ok:true,installId,extensionVersion:manifestVersion(),locked:!ready,vaultMode:mode,queueCount:count,queueWarning:count>=QUEUE_WARNING,queueMode:idbQueue()?.kind||stored[STORE.queueMode]||"legacy-local-v5",origin,configured:Boolean(origin),connected:Boolean(origin&&heartbeatFresh),connectionState:origin?(heartbeatFresh?"CONNECTED":"CONNECTING"):"DISCONNECTED",unlockedAt,lastWebsiteSeenAt,lastDeliveredAt:stored[STORE.lastDeliveredAt]||"",providerHealth:stored[STORE.providerHealth]||{},contextPreview:stored[STORE.contextPreview]||null,lastError:stored[STORE.lastError]||""};}
 async function configureSidePanel(){try{await chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true});}catch{}}
 
 async function injectCaptureIntoOpenProviderTabs(){
   const patterns=["https://chatgpt.com/*","https://claude.ai/*","https://gemini.google.com/*"];
   const tabs=await chrome.tabs.query({url:patterns});
-  for(const tab of tabs){if(!tab.id)continue;try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:["capture.js"]});}catch{}}
+  for(const tab of tabs){if(!tab.id)continue;try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:["provider_adapters.js","capture.js"]});}catch{}}
 }
 
 chrome.runtime.onInstalled.addListener(()=>{void initializeVault();void configureSidePanel();void injectCaptureIntoOpenProviderTabs();});
@@ -169,6 +171,8 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
       case"BRAIN2_CONNECT_WEBSITE":return connectWebsite(message,sender);
       case"BRAIN2_WEBSITE_HEARTBEAT":return websiteHeartbeat(message,sender);
       case"BRAIN2_PROVIDER_HEALTH":return updateProviderHealth(message.health,sender);
+      case"BRAIN2_CONTEXT_PREVIEW_UPDATE":return updateContextPreview(message.preview);
+      case"BRAIN2_CLEAR_CONTEXT_PREVIEW":return updateContextPreview(null);
       case"BRAIN2_FLUSH":void pulseOrigin();return{ok:true,count:await queueCount()};
       case"BRAIN2_CLEAR_QUEUE":return clearQueue();
       case"BRAIN2_STATUS":return status();

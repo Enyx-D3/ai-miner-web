@@ -19,6 +19,8 @@
       setTimeout(push,100);return;
     }
     if(event.data.type==="BRAIN2_WEBSITE_CONNECT_ACK"&&String(event.data.bridgeNonce||"")===bridgeNonce&&String(event.data.installId||"")===connectorInstallId){connected=true;setTimeout(push,50);return;}
+  if(event.data.type==="BRAIN2_CONTEXT_PREVIEW"){await chrome.runtime.sendMessage({type:"BRAIN2_CONTEXT_PREVIEW_UPDATE",preview:event.data.preview||null});return;}
+  if(event.data.type==="BRAIN2_CONTEXT_PREVIEW_CLEAR"){await chrome.runtime.sendMessage({type:"BRAIN2_CLEAR_CONTEXT_PREVIEW"});return;}
     if(event.data.type!=="BRAIN2_EXTENSION_ACK"||event.data.batchId!==activeBatch||event.data.bridgeNonce!==bridgeNonce||event.data.connectorInstallId!==connectorInstallId)return;
     const ack=await chrome.runtime.sendMessage({type:"BRAIN2_ACK",acceptedIds:Array.isArray(event.data.acceptedIds)?event.data.acceptedIds:[]});activeBatch=null;
     window.postMessage({type:"BRAIN2_EXTENSION_STATUS",bridgeNonce,installId:connectorInstallId,extensionVersion,queueCount:ack?.count||0,vaultLocked:false},targetOrigin);setTimeout(push,120);

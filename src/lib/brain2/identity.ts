@@ -76,6 +76,14 @@ export function normalizeText(value: string): string {
   return value.normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
+export function normalizeTextLegacyV9(value: string): string {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+export function normalizeIdentityPartLegacyV9(value: string | number | undefined | null): string {
+  return normalizeTextLegacyV9(String(value ?? "")).toLocaleLowerCase("en-US");
+}
+
 export function normalizeIdentityPart(value: string | number | undefined | null): string {
   return normalizeText(String(value ?? "")).toLocaleLowerCase("en-US");
 }
@@ -90,6 +98,11 @@ export async function sha256(value: string): Promise<string> {
 
 export async function canonicalId(prefix: string, ...parts: Array<string | number | undefined | null>): Promise<string> {
   const stable = [BRAIN2_IDENTITY_VERSION, ...parts].map(normalizeIdentityPart).join("\u241f");
+  return `${prefix}_${(await sha256(stable)).slice(0, 24)}`;
+}
+
+export async function canonicalIdLegacyV9(prefix: string, ...parts: Array<string | number | undefined | null>): Promise<string> {
+  const stable = [BRAIN2_IDENTITY_VERSION, ...parts].map(normalizeIdentityPartLegacyV9).join("\u241f");
   return `${prefix}_${(await sha256(stable)).slice(0, 24)}`;
 }
 
@@ -120,6 +133,14 @@ export async function canonicalMessageId(input: {
     input.role,
     normalizeText(input.text),
   );
+}
+
+export async function canonicalMessageIdLegacyV9(input: {
+  provider: string; conversationId: string; providerMessageId?: string; providerNodeId?: string; parentProviderNodeId?: string; branchId?: string; sequence?: number; role: string; text: string;
+}): Promise<string> {
+  const nativeIdentity = normalizeIdentityPartLegacyV9(input.providerMessageId || input.providerNodeId);
+  if (nativeIdentity) return canonicalIdLegacyV9("msg", input.provider, input.conversationId, "native", nativeIdentity);
+  return canonicalIdLegacyV9("msg", input.provider, input.conversationId, "structural", input.branchId, input.parentProviderNodeId, input.sequence ?? -1, input.role, normalizeTextLegacyV9(input.text));
 }
 
 export function slugify(value: string): string {
