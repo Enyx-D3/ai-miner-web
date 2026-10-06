@@ -35,7 +35,7 @@ Blocked for production: real Supabase project credentials, Google OAuth provider
 
 ## 6. Billing Implementation
 
-Status: `BLOCKED`. Pricing currently redirects to the landing page. Stripe env placeholders and validation are prepared, but checkout, webhook verification, subscription mapping, portal, idempotency, and entitlements are not implemented.
+Status: `PARTIAL`. Mission 02 adds Stripe Checkout, customer portal, signed webhook verification, idempotent event records, customer mapping, and paid entitlement writes for monthly, yearly, and founder lifetime plans. Production is still blocked until live Stripe credentials, webhook delivery, and Supabase migrations are configured and verified.
 
 ## 7. Entitlement Model
 
