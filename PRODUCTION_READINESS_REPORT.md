@@ -35,7 +35,7 @@ Blocked for production: real Supabase project credentials, Google OAuth provider
 
 ## 6. Billing Implementation
 
-Status: `PARTIAL`. Mission 02 adds Stripe Checkout, customer portal, signed webhook verification, idempotent event records, customer mapping, and paid entitlement writes for monthly, yearly, and founder lifetime plans. Production is still blocked until live Stripe credentials, webhook delivery, and Supabase migrations are configured and verified.
+Status: `PARTIAL`. Mission 02 adds Stripe Checkout, customer portal, signed webhook verification with timestamp tolerance, idempotent/retryable event records, customer mapping, authoritative Stripe object checks, and paid entitlement writes for monthly, yearly, and founder lifetime plans. Production is still blocked until live Stripe credentials, webhook delivery, and Supabase migrations are configured and verified.
 
 ## 7. Entitlement Model
 

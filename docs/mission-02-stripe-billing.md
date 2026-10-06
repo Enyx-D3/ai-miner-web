@@ -28,6 +28,8 @@ Configure the webhook endpoint:
 
 Subscribe at minimum to checkout session, subscription, charge refund, and dispute events. Store the signing secret in `STRIPE_WEBHOOK_SECRET`.
 
+Webhook handling verifies Stripe signatures against the raw body with a 5-minute timestamp tolerance and supports multiple `v1` signatures for key rotation. Signed webhook events do not grant access by themselves; the server retrieves the authoritative Checkout Session or Subscription from Stripe before writing entitlements.
+
 ## Supabase Migration
 
 Apply:
@@ -48,5 +50,12 @@ Staging checklist:
 5. Open `/dashboard`.
 6. Cancel subscription and verify access lasts only through the paid period.
 7. Refund lifetime payment and verify entitlement is revoked.
+
+Security notes:
+
+- Founder lifetime access requires a verified Checkout Session with the configured lifetime Price ID.
+- Subscription access requires an approved monthly/yearly Price ID and a non-expired paid period.
+- Refunds revoke only the matching lifetime payment intent; unrelated refunds are audited and do not revoke lifetime access.
+- Failed webhook transitions are marked failed and remain retryable.
 
 Rollback: redeploy the previous build and disable the Stripe webhook endpoint. Preserve account export/delete/support access.
