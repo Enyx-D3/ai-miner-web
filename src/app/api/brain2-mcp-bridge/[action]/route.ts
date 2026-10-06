@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requirePaidApi } from "@/server/auth/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,11 +61,13 @@ async function upstreamHealth(upstream: string) {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ action: string }> },
 ) {
   const action = await actionFrom(context).catch(() => "");
   if (action !== "status") return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const auth = await requirePaidApi(request);
+  if (auth) return auth;
 
   let upstreamConfigured = false;
   let upstream = "";
@@ -94,6 +97,9 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ action: string }> },
 ) {
+  const auth = await requirePaidApi(request, true);
+  if (auth) return auth;
+
   let action: string;
   try {
     action = await actionFrom(context);

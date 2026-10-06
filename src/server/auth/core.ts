@@ -35,7 +35,7 @@ export type Brain2SessionTokens = {
 
 type CookieReader = { get(name: string): { value: string } | undefined };
 
-const ACTIVE_STATUSES = new Set(["ACTIVE", "TRIALING"]);
+const ACTIVE_STATUSES = new Set(["ACTIVE"]);
 
 export function authConfigured() {
   return Boolean(
@@ -95,12 +95,24 @@ export function bearerFromRequest(request: Request | NextRequest) {
   return header.replace(/^Bearer\s+/i, "").trim();
 }
 
-export function accessTokenFromRequest(request: NextRequest) {
-  return request.cookies.get(AUTH_COOKIES.access)?.value || bearerFromRequest(request);
+export function cookieValueFromRequest(request: Request | NextRequest, name: string) {
+  const nextCookie = "cookies" in request ? request.cookies.get(name)?.value : "";
+  if (nextCookie) return nextCookie;
+  const cookie = request.headers.get("cookie") || "";
+  const raw = cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.split("=").slice(1).join("=") || "";
+  try {
+    return raw ? decodeURIComponent(raw) : "";
+  } catch {
+    return "";
+  }
 }
 
-export function refreshTokenFromRequest(request: NextRequest) {
-  return request.cookies.get(AUTH_COOKIES.refresh)?.value || "";
+export function accessTokenFromRequest(request: NextRequest) {
+  return cookieValueFromRequest(request, AUTH_COOKIES.access) || bearerFromRequest(request);
+}
+
+export function refreshTokenFromRequest(request: Request | NextRequest) {
+  return cookieValueFromRequest(request, AUTH_COOKIES.refresh);
 }
 
 export async function accessTokenFromCookies(reader: CookieReader) {
@@ -205,6 +217,26 @@ export async function authContextFromToken(accessToken: string): Promise<Brain2A
   if (!user) return null;
   const entitlement = await readEntitlement(user.id);
   return { user, entitlement };
+}
+
+export async function authContextFromRequest(request: Request | NextRequest): Promise<Brain2AuthContext | null> {
+  return authContextFromToken(cookieValueFromRequest(request, AUTH_COOKIES.access) || bearerFromRequest(request));
+}
+
+export function assertSameOriginMutation(request: Request | NextRequest) {
+  if (!cookieValueFromRequest(request, AUTH_COOKIES.access) && !cookieValueFromRequest(request, AUTH_COOKIES.refresh)) return;
+  const expected = new URL(request.url).origin;
+  const origin = request.headers.get("origin");
+  const referer = request.headers.get("referer");
+  const actual = origin || (referer ? new URL(referer).origin : "");
+  if (actual && actual !== expected) throw new Error("Cross-origin authenticated mutation rejected.");
+}
+
+export async function requirePaidRequest(request: Request | NextRequest): Promise<Brain2AuthContext> {
+  const context = await authContextFromRequest(request);
+  if (!context) throw new Error("Authentication required.");
+  if (!context.entitlement.active) throw new Error("Active paid entitlement required.");
+  return context;
 }
 
 export async function authContextFromCookieReader(reader: CookieReader): Promise<Brain2AuthContext | null> {

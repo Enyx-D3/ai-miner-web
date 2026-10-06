@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
-import { AUTH_COOKIES, clearAuthCookies, requireAuthConfig } from "@/server/auth/session";
+import { AUTH_COOKIES, assertSameOriginMutation, clearAuthCookies, requireAuthConfig } from "@/server/auth/session";
 
 export async function POST(request: Request) {
+  try {
+    assertSameOriginMutation(request);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Access denied." }, { status: 403 });
+  }
   const cookie = request.headers.get("cookie") || "";
   const access = decodeURIComponent(cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${AUTH_COOKIES.access}=`))?.split("=").slice(1).join("=") || "");
   try {

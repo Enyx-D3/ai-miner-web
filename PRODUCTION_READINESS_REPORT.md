@@ -29,7 +29,7 @@ Primary files changed include `.env.example`, `package.json`, `scripts/validate-
 
 ## 5. Auth Implementation
 
-Status: `PARTIAL`. Mission 01 adds Supabase Google OAuth, server-side session validation, HttpOnly access/refresh cookies, logout cookie clearing, `/api/v1/auth/session`, `/api/v1/users/me`, `/auth/callback`, and default-deny protected dashboard routes. Hardcoded demo email/password auth and client-readable token persistence are retired.
+Status: `PARTIAL`. Mission 01 adds Supabase Google OAuth, server-side session validation, HttpOnly access/refresh cookies, logout cookie clearing, CSRF same-origin checks for cookie-authenticated mutations, `/api/v1/auth/session`, `/api/v1/users/me`, `/auth/callback`, and default-deny protected dashboard routes. Hardcoded demo email/password auth and client-readable token persistence are retired.
 
 Blocked for production: real Supabase project credentials, Google OAuth provider configuration, and account deletion/export flows.
 
@@ -39,11 +39,11 @@ Status: `BLOCKED`. Pricing currently redirects to the landing page. Stripe env p
 
 ## 7. Entitlement Model
 
-Status: `PARTIAL`. Mission 01 adds `brain2_entitlements` with RLS and default `NONE`. Active access is limited to `ACTIVE`/`TRIALING` rows; Stripe creation and webhook updates are still Mission 02.
+Status: `PARTIAL`. Mission 01 adds `brain2_entitlements` with RLS and default `NONE`. Paid access is limited to unexpired `ACTIVE` rows only; `TRIALING`, expired, canceled, and missing rows are denied. Stripe creation and webhook updates are still Mission 02.
 
 ## 8. MCP Production Gateway
 
-Status: `PARTIAL`. MCP has a live browser bridge, read/compile/search/context tools, bounded mission execution, and bearer mode. Production config validation was added. Missing: user binding, revocation, scoped provider tokens, server audit records, rate limits, and public `incontext_*` tool aliases.
+Status: `PARTIAL`. MCP has a live browser bridge, read/compile/search/context tools, bounded mission execution, bearer mode, and the Web bridge proxy now requires a paid authenticated account. Production config validation was added. Missing: direct MCP user binding, revocation, scoped provider tokens, server audit records, rate limits, and public `incontext_*` tool aliases.
 
 ## 9. AutoContext Status
 
@@ -61,7 +61,7 @@ Status: `PARTIAL`. Web and Android have B2RESULT/B2VERIFY/B2REPAIR-style verific
 
 ## 12. Sync Certification
 
-Software sync gates passed on Web and Android. Physical Web to Android certification remains pending: pair, bootstrap, mutate both ways, disconnect/reconnect, restart, replay/duplicate/stale/conflict/revoked-device tests.
+Software sync gates passed on Web and Android. Mission 01 now gates Web sync endpoints behind paid account auth before existing device-token checks; durable account-linked device storage remains Mission 03. Physical Web to Android certification remains pending: pair, bootstrap, mutate both ways, disconnect/reconnect, restart, replay/duplicate/stale/conflict/revoked-device tests.
 
 ## 13. Import Stress Results
 
