@@ -90,17 +90,36 @@ const invalid = await core.authContextFromToken("revoked");
 if (invalid) throw new Error("revoked/invalid token accepted");
 const refreshed = await core.refreshSupabaseSession("refresh-paid");
 if (refreshed?.accessToken !== "paid") throw new Error("valid refresh token was not exchanged");
-let csrfRejected = false;
-try {
-  core.assertSameOriginMutation(new Request("https://app.test/api/x", {
-    method: "POST",
-    headers: { cookie: "b2ic_session_access=paid", origin: "https://evil.test" },
-  }));
-} catch { csrfRejected = true; }
-if (!csrfRejected) throw new Error("cross-origin cookie mutation accepted");
+
+function assertCsrfRejected(request, label) {
+  let rejected = false;
+  try {
+    core.assertSameOriginMutation(request);
+  } catch { rejected = true; }
+  if (!rejected) throw new Error(`${label} accepted`);
+}
+
+assertCsrfRejected(new Request("https://app.test/api/x", {
+  method: "POST",
+  headers: { cookie: "b2ic_session_access=paid" },
+}), "cookie mutation without origin/referer");
+
+assertCsrfRejected(new Request("https://app.test/api/x", {
+  method: "POST",
+  headers: { cookie: "b2ic_session_access=paid", origin: "https://evil.test" },
+}), "cross-origin cookie mutation");
+
 core.assertSameOriginMutation(new Request("https://app.test/api/x", {
   method: "POST",
   headers: { cookie: "b2ic_session_access=paid", origin: "https://app.test" },
+}));
+core.assertSameOriginMutation(new Request("https://app.test/api/x", {
+  method: "POST",
+  headers: { cookie: "b2ic_session_access=paid", referer: "https://app.test/dashboard" },
+}));
+core.assertSameOriginMutation(new Request("https://app.test/api/x", {
+  method: "POST",
+  headers: { authorization: "Bearer paid" },
 }));
 
 process.env = oldEnv;

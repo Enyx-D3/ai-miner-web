@@ -224,12 +224,23 @@ export async function authContextFromRequest(request: Request | NextRequest): Pr
 }
 
 export function assertSameOriginMutation(request: Request | NextRequest) {
-  if (!cookieValueFromRequest(request, AUTH_COOKIES.access) && !cookieValueFromRequest(request, AUTH_COOKIES.refresh)) return;
+  const hasCookieSession = Boolean(
+    cookieValueFromRequest(request, AUTH_COOKIES.access) ||
+    cookieValueFromRequest(request, AUTH_COOKIES.refresh),
+  );
+  if (!hasCookieSession) return;
   const expected = new URL(request.url).origin;
   const origin = request.headers.get("origin");
   const referer = request.headers.get("referer");
-  const actual = origin || (referer ? new URL(referer).origin : "");
-  if (actual && actual !== expected) throw new Error("Cross-origin authenticated mutation rejected.");
+  let actual = origin || "";
+  if (!actual && referer) {
+    try {
+      actual = new URL(referer).origin;
+    } catch {
+      throw new Error("Invalid authenticated mutation referer.");
+    }
+  }
+  if (!actual || actual !== expected) throw new Error("Cross-origin authenticated mutation rejected.");
 }
 
 export async function requirePaidRequest(request: Request | NextRequest): Promise<Brain2AuthContext> {
