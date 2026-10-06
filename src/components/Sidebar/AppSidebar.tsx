@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity, ArrowLeft, BookOpen, BrainCircuit, CalendarDays, Cpu, Database, FlaskConical, FolderKanban, History,
-  LayoutDashboard, Lightbulb, ListChecks, MessagesSquare, Network, NotebookTabs, Radio, Search, ShieldCheck, Target,
+  LayoutDashboard, Lightbulb, ListChecks, LogOut, MessagesSquare, Network, NotebookTabs, Radio, Search, ShieldCheck, Target,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader,
@@ -58,6 +58,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const [modelDownloaded,setModelDownloaded]=useState(()=>getBrain2RuntimeAvailabilityHint().hasCachedRuntime);
   useEffect(()=>subscribeBrain2Transformers(()=>setModelDownloaded(getBrain2RuntimeAvailabilityHint().hasCachedRuntime)),[]);
   const modelBadgeClass=modelDownloaded?"border-emerald-200 bg-emerald-50 text-emerald-700":"border-amber-200 bg-amber-50 text-amber-700";
+  async function signOut() {
+    await fetch("/api/local-auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
+    document.cookie = "accessToken=; Max-Age=0; path=/";
+    document.cookie = "refreshToken=; Max-Age=0; path=/";
+    window.location.assign("/login");
+  }
   return <Sidebar {...props} className="border-r border-border bg-white/90">
     <SidebarHeader className="border-b border-border p-4"><Link href="/dashboard" className="flex items-center gap-2.5"><span className="grid size-10 place-items-center rounded-xl bg-white/70"><InContextTree variant="mark" className="incontext-brand-tree size-9" /></span><span className="leading-none"><span className="block text-xs font-extrabold tracking-[-.025em] text-[#29253E]">brain2:<span className="text-[var(--blue)]">inContext</span></span><span className="mt-1 block text-[9px] font-semibold text-muted-foreground">Private AI continuity</span></span></Link></SidebarHeader>
     <SidebarContent>
@@ -75,6 +81,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       </SidebarGroup>
       <MenuGroup label="Memory" items={coreItems} pathname={pathname}/><MenuGroup label="Intelligence" items={intelligenceItems} pathname={pathname}/><MenuGroup label="System" items={systemItems} pathname={pathname}/>
     </SidebarContent>
-    <SidebarFooter className="border-t border-border p-3"><div className="mb-2 rounded-xl border border-blue-100 bg-white/75 p-3"><div className="text-[9px] font-black uppercase tracking-[.12em] text-cyan-600">Control room</div><div className="mt-1 text-[10px] leading-4 text-muted-foreground">Source-backed state. Unknown runtime signals stay unknown.</div></div><SidebarMenu><SidebarMenuItem><SidebarMenuButton asChild><Link href="/"><ArrowLeft />Back to site</Link></SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarFooter><SidebarRail />
+    <SidebarFooter className="border-t border-border p-3"><div className="mb-2 rounded-xl border border-blue-100 bg-white/75 p-3"><div className="text-[9px] font-black uppercase tracking-[.12em] text-cyan-600">Control room</div><div className="mt-1 text-[10px] leading-4 text-muted-foreground">Source-backed state. Unknown runtime signals stay unknown.</div></div><SidebarMenu><SidebarMenuItem><SidebarMenuButton asChild><Link href="/"><ArrowLeft />Back to site</Link></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><SidebarMenuButton type="button" onClick={signOut}><LogOut />Sign out</SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarFooter><SidebarRail />
   </Sidebar>;
 }
