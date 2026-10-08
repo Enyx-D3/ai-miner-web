@@ -48,9 +48,12 @@ const db = {
   entitlements: new Map(),
   events: new Map(),
   licenses: new Map(),
+  subscriptions: new Map(),
   writes: [],
   stripeSessions: new Map(),
   stripeSubscriptions: new Map(),
+  failProcessedPatch: false,
+  processors: 0,
 };
 
 globalThis.fetch = async (url, init = {}) => {
@@ -76,6 +79,19 @@ globalThis.fetch = async (url, init = {}) => {
   if (href.includes("api.stripe.com/v1/billing_portal/sessions")) {
     return Response.json({ url: "https://billing.stripe.test/session" });
   }
+  if (href.includes("/rest/v1/rpc/brain2_billing_rate_limit")) {
+    return Response.json(true);
+  }
+  if (href.includes("/rest/v1/rpc/brain2_claim_billing_event")) {
+    const { p_event_id, p_event_type } = JSON.parse(init.body);
+    const existing = db.events.get(p_event_id);
+    if (existing?.processed_at) return Response.json("processed");
+    if (existing?.processing_started_at && !existing.failed_at) return Response.json("processing");
+    db.events.set(p_event_id, { stripe_event_id: p_event_id, event_type: p_event_type, processing_started_at: new Date().toISOString(), processed_at: null, failed_at: null });
+    db.writes.push({ table: "events_claim", row: db.events.get(p_event_id) });
+    db.processors += 1;
+    return Response.json("claimed");
+  }
   if (href.includes("/rest/v1/brain2_stripe_customers") && init.method !== "POST") {
     const byUser = href.match(/user_id=eq\.([^&]+)/)?.[1];
     const byCustomer = href.match(/stripe_customer_id=eq\.([^&]+)/)?.[1];
@@ -100,6 +116,21 @@ globalThis.fetch = async (url, init = {}) => {
     db.writes.push({ table: "entitlements", row });
     return Response.json([row]);
   }
+  if (href.includes("/rest/v1/brain2_subscriptions") && init.method !== "POST") {
+    const user = decodeURIComponent(href.match(/user_id=eq\.([^&]+)/)?.[1] || "");
+    const rows = [...db.subscriptions.values()]
+      .filter((row) => row.user_id === user)
+      .filter((row) => !href.includes("status=eq.ACTIVE") || row.status === "ACTIVE")
+      .filter((row) => !href.includes("current_period_end=gt.") || Date.parse(row.current_period_end || "1970-01-01") > Date.now())
+      .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+    return Response.json(rows.slice(0, 1));
+  }
+  if (href.includes("/rest/v1/brain2_subscriptions") && init.method === "POST") {
+    const row = JSON.parse(init.body);
+    db.subscriptions.set(row.stripe_subscription_id, row);
+    db.writes.push({ table: "subscriptions", row });
+    return Response.json([row]);
+  }
   if (href.includes("/rest/v1/brain2_lifetime_licenses") && init.method === "PATCH") {
     const pi = decodeURIComponent(href.match(/stripe_payment_intent_id=eq\.([^&]+)/)?.[1] || "");
     db.licenses.set(pi, { ...db.licenses.get(pi), ...JSON.parse(init.body) });
@@ -108,8 +139,9 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (href.includes("/rest/v1/brain2_lifetime_licenses") && init.method !== "POST") {
     const pi = decodeURIComponent(href.match(/stripe_payment_intent_id=eq\.([^&]+)/)?.[1] || "");
-    const row = db.licenses.get(pi);
-    return Response.json(row && (!href.includes("status=eq.ACTIVE") || row.status === "ACTIVE") ? [row] : []);
+    const user = decodeURIComponent(href.match(/user_id=eq\.([^&]+)/)?.[1] || "");
+    const row = pi ? db.licenses.get(pi) : [...db.licenses.values()].find((item) => item.user_id === user && (!href.includes("status=eq.ACTIVE") || item.status === "ACTIVE") && (!href.includes("revoked_at=is.null") || !item.revoked_at));
+    return Response.json(row && (!href.includes("status=eq.ACTIVE") || row.status === "ACTIVE") && (!href.includes("revoked_at=is.null") || !row.revoked_at) ? [row] : []);
   }
   if (href.includes("/rest/v1/brain2_lifetime_licenses") && init.method === "POST") {
     const row = JSON.parse(init.body);
@@ -118,6 +150,7 @@ globalThis.fetch = async (url, init = {}) => {
     return Response.json([row]);
   }
   if (href.includes("/rest/v1/brain2_billing_events") && init.method === "PATCH") {
+    if (db.failProcessedPatch && String(init.body).includes("processed_at")) return new Response("db down", { status: 500 });
     const eventId = decodeURIComponent(href.match(/stripe_event_id=eq\.([^&]+)/)?.[1] || "");
     db.events.set(eventId, { ...db.events.get(eventId), ...JSON.parse(init.body) });
     db.writes.push({ table: "events_patch", row: db.events.get(eventId) });
@@ -176,7 +209,14 @@ const nowTs = Math.floor(Date.now() / 1000);
 const sig = createHmac("sha256", "whsec_mock").update(`${nowTs}.${raw}`).digest("hex");
 billing.verifyStripeSignature(raw, `t=${nowTs},v1=bad,v1=${sig}`);
 
-db.stripeSubscriptions.set("sub_1", { id: "sub_1", customer: "cus_user_a", status: "active", current_period_end: 4102444800, items: { data: [{ price: { id: "price_monthly" } }] } });
+db.stripeSubscriptions.set("sub_unpaid", { id: "sub_unpaid", customer: "cus_user_a", status: "active", current_period_end: 4102444800, latest_invoice: { id: "in_unpaid", status: "open", paid: false, payment_intent: { status: "requires_payment_method" } }, items: { data: [{ price: { id: "price_monthly" } }] } });
+let unpaidRejected = false;
+try {
+  await billing.processStripeEvent({ id: "evt_unpaid", type: "customer.subscription.updated", data: { object: { id: "sub_unpaid" } } });
+} catch { unpaidRejected = true; }
+if (!unpaidRejected || db.entitlements.get("user_a")?.status === "ACTIVE") throw new Error("active subscription with unpaid invoice granted access");
+
+db.stripeSubscriptions.set("sub_1", { id: "sub_1", customer: "cus_user_a", status: "active", current_period_end: 4102444800, latest_invoice: { id: "in_paid", status: "paid", paid: true, payment_intent: { status: "succeeded" } }, items: { data: [{ price: { id: "price_monthly" } }] } });
 await billing.processStripeEvent({
   id: "evt_monthly",
   type: "customer.subscription.updated",
@@ -186,6 +226,20 @@ if (db.entitlements.get("user_a")?.status !== "ACTIVE") throw new Error("complet
 const writesAfterFirst = db.writes.length;
 await billing.processStripeEvent({ id: "evt_monthly", type: "customer.subscription.updated", data: { object: { id: "sub_1", customer: "cus_user_a", status: "canceled" } } });
 if (db.writes.length !== writesAfterFirst) throw new Error("duplicate webhook was not idempotent");
+const processorsBeforeConcurrent = db.processors;
+await Promise.all([
+  billing.processStripeEvent({ id: "evt_concurrent", type: "customer.subscription.updated", data: { object: { id: "sub_1" } } }),
+  billing.processStripeEvent({ id: "evt_concurrent", type: "customer.subscription.updated", data: { object: { id: "sub_1" } } }),
+]);
+if (db.processors - processorsBeforeConcurrent !== 1) throw new Error("concurrent duplicate webhook had more than one processor");
+
+db.failProcessedPatch = true;
+let processedFailureRejected = false;
+try {
+  await billing.processStripeEvent({ id: "evt_processed_fail", type: "customer.subscription.updated", data: { object: { id: "sub_1" } } });
+} catch { processedFailureRejected = true; }
+db.failProcessedPatch = false;
+if (!processedFailureRejected) throw new Error("processed marker DB failure did not fail webhook");
 
 db.stripeSubscriptions.set("sub_wrong_price", { id: "sub_wrong_price", customer: "cus_user_a", status: "active", current_period_end: 4102444800, items: { data: [{ price: { id: "price_other" } }] } });
 let wrongPriceRejected = false;
@@ -229,10 +283,18 @@ await billing.processStripeEvent({
 if (!db.entitlements.get("user_a")?.lifetime) throw new Error("lifetime payment did not activate license");
 await billing.processStripeEvent({ id: "evt_unrelated_refund", type: "charge.refunded", data: { object: { customer: "cus_user_a", payment_intent: "pi_other" } } });
 if (db.entitlements.get("user_a")?.status !== "ACTIVE") throw new Error("unrelated refund revoked lifetime license");
+db.stripeSubscriptions.set("sub_1", { id: "sub_1", customer: "cus_user_a", status: "active", current_period_end: 4102444800, latest_invoice: { id: "in_paid_2", status: "paid", paid: true, payment_intent: { status: "succeeded" } }, items: { data: [{ price: { id: "price_monthly" } }] } });
+await billing.processStripeEvent({ id: "evt_active_before_refund", type: "customer.subscription.updated", data: { object: { id: "sub_1" } } });
+await billing.processStripeEvent({ id: "evt_refund", type: "charge.refunded", data: { object: { customer: "cus_user_a", payment_intent: "pi_1" } } });
+if (db.entitlements.get("user_a")?.status !== "ACTIVE" || db.entitlements.get("user_a")?.lifetime) throw new Error("lifetime refund overwrote valid subscription access");
+
+db.stripeSessions.set("cs_lifetime_2", { id: "cs_lifetime_2", mode: "payment", payment_status: "paid", customer: "cus_user_a", client_reference_id: "user_a", payment_intent: "pi_2", line_items: { data: [{ price: { id: "price_lifetime" } }] } });
+await billing.processStripeEvent({ id: "evt_lifetime_2", type: "checkout.session.completed", data: { object: { id: "cs_lifetime_2" } } });
+db.stripeSubscriptions.set("sub_1", { id: "sub_1", customer: "cus_user_a", status: "canceled", current_period_end: 4102444800, items: { data: [{ price: { id: "price_monthly" } }] } });
 await billing.processStripeEvent({ id: "evt_sub_cancel_after_lifetime", type: "customer.subscription.deleted", data: { object: { id: "sub_1", customer: "cus_user_a", status: "canceled" } } });
 if (!db.entitlements.get("user_a")?.lifetime || db.entitlements.get("user_a")?.status !== "ACTIVE") throw new Error("subscription cancellation overwrote valid lifetime license");
-await billing.processStripeEvent({ id: "evt_refund", type: "charge.refunded", data: { object: { customer: "cus_user_a", payment_intent: "pi_1" } } });
-if (db.entitlements.get("user_a")?.status !== "EXPIRED") throw new Error("refunded lifetime was not revoked");
+await billing.processStripeEvent({ id: "evt_refund_2", type: "charge.refunded", data: { object: { customer: "cus_user_a", payment_intent: "pi_2" } } });
+if (db.entitlements.get("user_a")?.status === "ACTIVE") throw new Error("both invalid sources still granted access");
 
 process.env = oldEnv;
 console.log("PASS Runtime billing security checks");

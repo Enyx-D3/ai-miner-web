@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     assertSameOriginMutation(request);
     const context = await authContextFromRequest(request);
     if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-    assertRateLimit(`portal:${context.user.id}`, 10);
+    await assertRateLimit(`portal:${context.user.id}`, 10);
     return NextResponse.json(await createPortalUrl(request, context));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Billing portal failed.";

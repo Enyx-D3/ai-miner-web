@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     assertSameOriginMutation(request);
     const context = await authContextFromRequest(request);
     if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-    assertRateLimit(`checkout:${context.user.id}`, 10);
+    await assertRateLimit(`checkout:${context.user.id}`, 10);
     const body = await request.json().catch(() => ({})) as { plan?: unknown };
     const session = await createCheckoutUrl(request, context, body.plan);
     if (!session.url) throw new Error("Stripe checkout did not return a URL.");

@@ -22,8 +22,6 @@ export const BILLING_PLANS: Record<BillingPlanKey, BillingPlan> = {
 type StripeObject = Record<string, unknown>;
 type EntitlementStatus = "NONE" | "ACTIVE" | "PAST_DUE" | "CANCELED" | "EXPIRED";
 
-const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-
 export function appOrigin(request: Request) {
   return (process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, "");
 }
@@ -46,15 +44,15 @@ export function planPriceId(planKey: unknown) {
   return { plan, priceId };
 }
 
-export function assertRateLimit(key: string, limit = 20, windowMs = 60_000) {
-  const now = Date.now();
-  const bucket = rateBuckets.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
-    return;
-  }
-  bucket.count += 1;
-  if (bucket.count > limit) throw new Error("Rate limit exceeded.");
+export async function assertRateLimit(key: string, limit = 20, windowMs = 60_000) {
+  const response = await supabaseFetch("/rest/v1/rpc/brain2_billing_rate_limit", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ p_key: key, p_limit: limit, p_window_seconds: Math.ceil(windowMs / 1000) }),
+  });
+  if (!response.ok) throw new Error(await response.text().catch(() => "Billing rate limit check failed."));
+  const allowed = await response.json().catch(() => false);
+  if (!allowed) throw new Error("Rate limit exceeded.");
 }
 
 function stripeSecret() {
@@ -191,25 +189,18 @@ export function verifyStripeSignature(rawBody: string, signature: string | null,
   if (!ok) throw new Error("Stripe webhook signature invalid.");
 }
 
-async function eventAlreadyProcessed(eventId: string) {
-  const row = await readOne<{ processed_at?: string | null }>(`/rest/v1/brain2_billing_events?stripe_event_id=eq.${encodeURIComponent(eventId)}&select=processed_at&limit=1`);
-  return Boolean(row?.processed_at);
-}
-
 async function claimEvent(event: StripeObject) {
-  const existing = await readOne<{ processed_at?: string | null }>(`/rest/v1/brain2_billing_events?stripe_event_id=eq.${encodeURIComponent(String(event.id))}&select=processed_at,failed_at&limit=1`);
-  if (existing?.processed_at) return false;
-  if (existing) return true;
-  const rows = await writeRows(
-    "/rest/v1/brain2_billing_events?on_conflict=stripe_event_id",
-    { stripe_event_id: event.id, event_type: event.type, processing_started_at: new Date().toISOString() },
-    "resolution=ignore-duplicates,return=representation",
-  );
-  return Array.isArray(rows) && rows.length > 0;
+  const response = await supabaseFetch("/rest/v1/rpc/brain2_claim_billing_event", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ p_event_id: String(event.id), p_event_type: String(event.type) }),
+  });
+  if (!response.ok) throw new Error(await response.text().catch(() => "Billing event claim failed."));
+  return await response.json().catch(() => "") === "claimed";
 }
 
 async function markEventProcessed(event: StripeObject) {
-  await supabaseFetch(
+  const response = await supabaseFetch(
     `/rest/v1/brain2_billing_events?stripe_event_id=eq.${encodeURIComponent(String(event.id))}`,
     {
       method: "PATCH",
@@ -217,27 +208,24 @@ async function markEventProcessed(event: StripeObject) {
       body: JSON.stringify({ processed_at: new Date().toISOString(), failed_at: null, error: null }),
     },
   );
+  if (!response.ok) throw new Error(await response.text().catch(() => "Billing event processed update failed."));
 }
 
 async function markEventFailed(event: StripeObject, error: unknown) {
-  await supabaseFetch(
+  const response = await supabaseFetch(
     `/rest/v1/brain2_billing_events?stripe_event_id=eq.${encodeURIComponent(String(event.id))}`,
     {
       method: "PATCH",
       headers: { "content-type": "application/json", prefer: "return=minimal" },
       body: JSON.stringify({ failed_at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }),
     },
-  ).catch(() => null);
+  );
+  if (!response.ok) throw new Error(await response.text().catch(() => "Billing event failure update failed."));
 }
 
 async function userIdForCustomer(customerId: string) {
   const row = await readOne<{ user_id: string }>(`/rest/v1/brain2_stripe_customers?stripe_customer_id=eq.${encodeURIComponent(customerId)}&select=user_id&limit=1`);
   return row?.user_id || "";
-}
-
-async function hasActiveLifetime(userId: string) {
-  const row = await readOne<{ status?: string; lifetime?: boolean; revoked_at?: string | null }>(`/rest/v1/brain2_entitlements?user_id=eq.${encodeURIComponent(userId)}&select=status,lifetime,revoked_at&limit=1`);
-  return Boolean(row?.lifetime && row.status === "ACTIVE" && !row.revoked_at);
 }
 
 function stripePriceId(item: unknown) {
@@ -267,7 +255,14 @@ function subscriptionPeriodEnd(subscription: StripeObject) {
   return iso;
 }
 
-async function upsertEntitlement(input: { userId: string; status: EntitlementStatus; plan: string | null; customerId?: string; subscriptionId?: string | null; periodEnd?: string | null; lifetime?: boolean; revokedAt?: string | null; cancelAtPeriodEnd?: boolean }) {
+function invoiceIsPaid(invoice: unknown) {
+  const record = invoice as StripeObject | undefined;
+  const paymentIntent = record?.payment_intent as StripeObject | string | undefined;
+  const paymentIntentStatus = typeof paymentIntent === "object" ? paymentIntent.status : undefined;
+  return Boolean(record && record.status === "paid" && record.paid === true && (!paymentIntent || typeof paymentIntent === "string" || paymentIntentStatus === "succeeded"));
+}
+
+async function upsertEntitlement(input: { userId: string; status: EntitlementStatus; plan: string | null; customerId?: string; subscriptionId?: string | null; paymentIntentId?: string | null; periodEnd?: string | null; lifetime?: boolean; revokedAt?: string | null; cancelAtPeriodEnd?: boolean }) {
   await writeRows(
     "/rest/v1/brain2_entitlements?on_conflict=user_id",
     {
@@ -276,6 +271,7 @@ async function upsertEntitlement(input: { userId: string; status: EntitlementSta
       plan: input.plan,
       stripe_customer_id: input.customerId ?? null,
       stripe_subscription_id: input.subscriptionId ?? null,
+      stripe_payment_intent_id: input.paymentIntentId ?? null,
       current_period_end: input.periodEnd ?? null,
       source: input.lifetime ? "stripe_lifetime" : "stripe_subscription",
       lifetime: Boolean(input.lifetime),
@@ -285,6 +281,59 @@ async function upsertEntitlement(input: { userId: string; status: EntitlementSta
     },
     "resolution=merge-duplicates,return=representation",
   );
+}
+
+async function upsertSubscriptionSource(input: { userId: string; customerId: string; subscriptionId: string; priceId: string; status: EntitlementStatus; periodEnd?: string | null; latestInvoiceId?: string | null; cancelAtPeriodEnd?: boolean }) {
+  await writeRows(
+    "/rest/v1/brain2_subscriptions?on_conflict=stripe_subscription_id",
+    {
+      user_id: input.userId,
+      stripe_customer_id: input.customerId,
+      stripe_subscription_id: input.subscriptionId,
+      price_id: input.priceId,
+      status: input.status,
+      current_period_end: input.periodEnd ?? null,
+      latest_invoice_id: input.latestInvoiceId ?? null,
+      cancel_at_period_end: Boolean(input.cancelAtPeriodEnd),
+      updated_at: new Date().toISOString(),
+    },
+    "resolution=merge-duplicates,return=representation",
+  );
+}
+
+async function activeLifetime(userId: string) {
+  return readOne<{ stripe_customer_id: string; stripe_payment_intent_id: string }>(`/rest/v1/brain2_lifetime_licenses?user_id=eq.${encodeURIComponent(userId)}&status=eq.ACTIVE&revoked_at=is.null&select=stripe_customer_id,stripe_payment_intent_id&limit=1`);
+}
+
+async function activeSubscription(userId: string) {
+  return readOne<{ stripe_customer_id: string; stripe_subscription_id: string; status: EntitlementStatus; current_period_end: string | null; cancel_at_period_end?: boolean }>(`/rest/v1/brain2_subscriptions?user_id=eq.${encodeURIComponent(userId)}&status=eq.ACTIVE&current_period_end=gt.${encodeURIComponent(new Date().toISOString())}&select=stripe_customer_id,stripe_subscription_id,status,current_period_end,cancel_at_period_end&limit=1`);
+}
+
+async function latestSubscription(userId: string) {
+  return readOne<{ stripe_customer_id: string; stripe_subscription_id: string; status: EntitlementStatus; current_period_end: string | null; cancel_at_period_end?: boolean }>(`/rest/v1/brain2_subscriptions?user_id=eq.${encodeURIComponent(userId)}&select=stripe_customer_id,stripe_subscription_id,status,current_period_end,cancel_at_period_end&order=updated_at.desc&limit=1`);
+}
+
+async function recomputeEffectiveEntitlement(userId: string, fallbackCustomerId?: string) {
+  const lifetime = await activeLifetime(userId);
+  if (lifetime) {
+    await upsertEntitlement({ userId, status: "ACTIVE", plan: "founder", customerId: lifetime.stripe_customer_id, paymentIntentId: lifetime.stripe_payment_intent_id, periodEnd: null, lifetime: true });
+    return;
+  }
+  const subscription = await activeSubscription(userId);
+  if (subscription) {
+    await upsertEntitlement({ userId, status: "ACTIVE", plan: "pro", customerId: subscription.stripe_customer_id, subscriptionId: subscription.stripe_subscription_id, periodEnd: subscription.current_period_end, cancelAtPeriodEnd: subscription.cancel_at_period_end });
+    return;
+  }
+  const last = await latestSubscription(userId);
+  await upsertEntitlement({
+    userId,
+    status: last?.status && last.status !== "ACTIVE" ? last.status : "EXPIRED",
+    plan: last ? "pro" : null,
+    customerId: last?.stripe_customer_id ?? fallbackCustomerId,
+    subscriptionId: last?.stripe_subscription_id ?? null,
+    periodEnd: last?.current_period_end ?? null,
+    cancelAtPeriodEnd: last?.cancel_at_period_end,
+  });
 }
 
 async function persistLifetimeLicense(input: { userId: string; customerId: string; session: StripeObject; paymentIntent: string }) {
@@ -306,7 +355,7 @@ async function persistLifetimeLicense(input: { userId: string; customerId: strin
 async function revokeLifetimeByPaymentIntent(paymentIntent: string) {
   const license = await readOne<{ user_id: string; stripe_customer_id: string }>(`/rest/v1/brain2_lifetime_licenses?stripe_payment_intent_id=eq.${encodeURIComponent(paymentIntent)}&status=eq.ACTIVE&select=user_id,stripe_customer_id&limit=1`);
   if (!license) return false;
-  await supabaseFetch(
+  const response = await supabaseFetch(
     `/rest/v1/brain2_lifetime_licenses?stripe_payment_intent_id=eq.${encodeURIComponent(paymentIntent)}`,
     {
       method: "PATCH",
@@ -314,7 +363,8 @@ async function revokeLifetimeByPaymentIntent(paymentIntent: string) {
       body: JSON.stringify({ status: "REVOKED", revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
     },
   );
-  await upsertEntitlement({ userId: license.user_id, status: "EXPIRED", plan: "founder", customerId: license.stripe_customer_id, periodEnd: null, lifetime: true, revokedAt: new Date().toISOString() });
+  if (!response.ok) throw new Error(await response.text().catch(() => "Lifetime license revocation failed."));
+  await recomputeEffectiveEntitlement(license.user_id, license.stripe_customer_id);
   return true;
 }
 
@@ -322,7 +372,6 @@ export async function processStripeEvent(event: StripeObject) {
   const eventId = String(event.id || "");
   const eventType = String(event.type || "");
   if (!eventId || !eventType) throw new Error("Invalid Stripe event.");
-  if (await eventAlreadyProcessed(eventId)) return { duplicate: true };
   if (!await claimEvent(event)) return { duplicate: true };
   try {
     const object = (event.data as { object?: StripeObject } | undefined)?.object || {};
@@ -338,33 +387,33 @@ export async function processStripeEvent(event: StripeObject) {
       if (!userId || owner !== userId) throw new Error("Stripe checkout customer ownership mismatch.");
       if (session.mode === "payment" && session.payment_status === "paid" && paymentIntent && prices.some(isLifetimePrice)) {
         await persistLifetimeLicense({ userId, customerId, session, paymentIntent });
-        await upsertEntitlement({ userId, status: "ACTIVE", plan: "founder", customerId, periodEnd: null, lifetime: true });
+        await recomputeEffectiveEntitlement(userId, customerId);
       }
     }
 
     if (eventType.startsWith("customer.subscription.")) {
       const subscriptionId = String(object.id || "");
-      const subscription = await stripeGet(`/subscriptions/${encodeURIComponent(subscriptionId)}?expand[]=latest_invoice&expand[]=items.data.price`);
+      const subscription = await stripeGet(`/subscriptions/${encodeURIComponent(subscriptionId)}?expand[]=latest_invoice.payment_intent&expand[]=items.data.price`);
       const customerId = String(subscription.customer || "");
       const userId = await userIdForCustomer(customerId);
       if (userId) {
-        if (await hasActiveLifetime(userId)) {
-          await markEventProcessed(event);
-          return { duplicate: false, preservedLifetime: true };
-        }
         const priceId = stripeItems(subscription).map(stripePriceId).find(Boolean) || "";
         if (!approvedSubscriptionPrice(priceId)) throw new Error("Stripe subscription price is not approved.");
         const status = subscription.status === "active" ? "ACTIVE" : subscription.status === "past_due" ? "PAST_DUE" : subscription.status === "canceled" ? "CANCELED" : "NONE";
         const periodEnd = status === "ACTIVE" ? subscriptionPeriodEnd(subscription) : null;
-        await upsertEntitlement({
+        if (status === "ACTIVE" && !invoiceIsPaid(subscription.latest_invoice)) throw new Error("Stripe subscription invoice is not paid.");
+        const latestInvoice = subscription.latest_invoice as StripeObject | undefined;
+        await upsertSubscriptionSource({
           userId,
-          status,
-          plan: "pro",
           customerId,
           subscriptionId,
+          priceId,
+          status,
           periodEnd,
+          latestInvoiceId: typeof latestInvoice === "object" ? String(latestInvoice.id || "") : String(subscription.latest_invoice || ""),
           cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
         });
+        await recomputeEffectiveEntitlement(userId, customerId);
       }
     }
 
