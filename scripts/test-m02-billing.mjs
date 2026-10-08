@@ -216,6 +216,20 @@ try {
 } catch { unpaidRejected = true; }
 if (!unpaidRejected || db.entitlements.get("user_a")?.status === "ACTIVE") throw new Error("active subscription with unpaid invoice granted access");
 
+db.stripeSubscriptions.set("sub_missing_pi", { id: "sub_missing_pi", customer: "cus_user_a", status: "active", current_period_end: 4102444800, latest_invoice: { id: "in_missing_pi", status: "paid", paid: true }, items: { data: [{ price: { id: "price_monthly" } }] } });
+let missingPiRejected = false;
+try {
+  await billing.processStripeEvent({ id: "evt_missing_pi", type: "customer.subscription.updated", data: { object: { id: "sub_missing_pi" } } });
+} catch { missingPiRejected = true; }
+if (!missingPiRejected || db.entitlements.get("user_a")?.status === "ACTIVE") throw new Error("active subscription with missing payment intent granted access");
+
+db.stripeSubscriptions.set("sub_unexpanded_pi", { id: "sub_unexpanded_pi", customer: "cus_user_a", status: "active", current_period_end: 4102444800, latest_invoice: { id: "in_unexpanded_pi", status: "paid", paid: true, payment_intent: "pi_unexpanded" }, items: { data: [{ price: { id: "price_monthly" } }] } });
+let unexpandedPiRejected = false;
+try {
+  await billing.processStripeEvent({ id: "evt_unexpanded_pi", type: "customer.subscription.updated", data: { object: { id: "sub_unexpanded_pi" } } });
+} catch { unexpandedPiRejected = true; }
+if (!unexpandedPiRejected || db.entitlements.get("user_a")?.status === "ACTIVE") throw new Error("active subscription with unexpanded payment intent granted access");
+
 db.stripeSubscriptions.set("sub_1", { id: "sub_1", customer: "cus_user_a", status: "active", current_period_end: 4102444800, latest_invoice: { id: "in_paid", status: "paid", paid: true, payment_intent: { status: "succeeded" } }, items: { data: [{ price: { id: "price_monthly" } }] } });
 await billing.processStripeEvent({
   id: "evt_monthly",

@@ -257,9 +257,8 @@ function subscriptionPeriodEnd(subscription: StripeObject) {
 
 function invoiceIsPaid(invoice: unknown) {
   const record = invoice as StripeObject | undefined;
-  const paymentIntent = record?.payment_intent as StripeObject | string | undefined;
-  const paymentIntentStatus = typeof paymentIntent === "object" ? paymentIntent.status : undefined;
-  return Boolean(record && record.status === "paid" && record.paid === true && (!paymentIntent || typeof paymentIntent === "string" || paymentIntentStatus === "succeeded"));
+  const paymentIntent = record?.payment_intent as StripeObject | undefined;
+  return Boolean(record && record.status === "paid" && record.paid === true && typeof paymentIntent === "object" && paymentIntent.status === "succeeded");
 }
 
 async function upsertEntitlement(input: { userId: string; status: EntitlementStatus; plan: string | null; customerId?: string; subscriptionId?: string | null; paymentIntentId?: string | null; periodEnd?: string | null; lifetime?: boolean; revokedAt?: string | null; cancelAtPeriodEnd?: boolean }) {
