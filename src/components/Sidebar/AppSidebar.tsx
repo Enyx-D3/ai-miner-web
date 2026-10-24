@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity, ArrowLeft, BookOpen, BrainCircuit, CalendarDays, Cpu, Database, FlaskConical, FolderKanban, History,
+  Activity, ArrowLeft, BookOpen, BrainCircuit, CalendarDays, Code2, Cpu, Database, FlaskConical, FolderKanban, History,
   LayoutDashboard, Lightbulb, ListChecks, LogOut, MessagesSquare, Network, NotebookTabs, Radio, Search, ShieldCheck, Target,
 } from "lucide-react";
 import {
@@ -20,6 +20,7 @@ const coreItems = [
   { title: "Ask / B2JOB", url: "/ask", icon: BrainCircuit },
   { title: "Search & Recall", url: "/search", icon: Search },
   { title: "Projects", url: "/projects", icon: FolderKanban },
+  { title: "Code Registry", url: "/code-registry", icon: Code2 },
   { title: "Live Notebooks", url: "/live-notebooks", icon: NotebookTabs },
   { title: "LifeWiki", url: "/wiki", icon: BookOpen },
   { title: "Conversations", url: "/conversations", icon: MessagesSquare },

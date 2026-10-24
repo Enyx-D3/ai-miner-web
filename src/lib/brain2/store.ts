@@ -12,6 +12,7 @@ import { accumulatePattern, buildPatternsFromAggregates, type PatternAggregate }
 import { buildCurrentTruthRoot, buildSourceEvidenceRoot, createStrictCurrentTruthContext, deriveStrictCurrentTruthCandidates, evaluateStrictCurrentTruthCandidate, noteStrictAssistantMessage, toCanonicalTruthMessages } from "./canonicalTruth";
 import { createPatternTest, createPortableExpertise } from "./patternLab";
 import { chooseProject, deriveProjectName, fingerprintConversation, projectSlug } from "./projectResolver";
+import { clearCodeRegistry } from "./codeRegistry";
 import { buildDeterministicProjectIntelligence, buildProjectIntelligenceSourceVersion, refineProjectIntelligenceWithMRS, type IntelligenceProjection } from "./intelligenceLayer";
 import { buildFailureMemory, buildReasoningTrajectory, compileCapabilityFromControllerRun, retrieveReasoningMemory } from "./reasoningCompiler";
 import { configurePersistentRetrieval, indexedAtomsAsync, indexedMessages, indexedMessagesAsync, indexedTruths, indexedTruthsAsync, invalidateRuntimeIndex, messageHasAtom } from "./retrievalIndex";
@@ -2592,6 +2593,7 @@ export async function resetBrain2():Promise<void>{
 
   try {
     await deleteBrain2DatabaseCompletely();
+    await clearCodeRegistry();
     assertStorageLifecycle(resetEpoch);
     localStorage.removeItem("brain2-web-device-id");
 

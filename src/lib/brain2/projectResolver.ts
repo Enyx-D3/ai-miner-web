@@ -95,7 +95,8 @@ export function scoreProject(fingerprint: ProjectFingerprint, project: ProjectRe
 }
 
 export function chooseProject(fingerprint: ProjectFingerprint, projects: ProjectRecord[]): { project?: ProjectRecord; score: number } {
-  const ranked = projects.map((project) => ({ project, score: scoreProject(fingerprint, project) })).sort((a,b)=>b.score-a.score || b.project.updatedAt.localeCompare(a.project.updatedAt));
+  // Stable tie-breaking must not depend on wall-clock import/update timestamps.
+  const ranked = projects.map((project) => ({ project, score: scoreProject(fingerprint, project) })).sort((a,b)=>b.score-a.score || a.project.id.localeCompare(b.project.id));
   const best = ranked[0];
   if (!best) return { score: 0 };
   // Generic titles should prefer strong relative content evidence without collapsing low-signal chats.

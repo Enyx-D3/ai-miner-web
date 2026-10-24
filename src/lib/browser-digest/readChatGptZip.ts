@@ -1,4 +1,5 @@
 import { AsyncUnzipInflate, Unzip } from "fflate"
+import { languageForFilename, safeCodeContent, safeSourcePath, selectCodeFilesFromLibraryMetadata, type CodeFileMetadata } from "../brain2/codeRegistryCore"
 
 export type BrowserDigestSourceKind = "chatgpt" | "claude" | "gemini"
 
@@ -15,6 +16,7 @@ export type ExtractedConversationJson = {
   fileCount: number
   dateRangeStart?: string
   dateRangeEnd?: string
+  codeFiles?: CodeFileMetadata[]
 }
 
 type ClaudeConversation = {
@@ -57,6 +59,7 @@ type ChatGptCompatibleConversation = {
 
 const conversationJsonPattern = /(?:^|\/)conversations(?:-[^/\\]+)?\.json$/i
 const geminiActivityPattern = /(?:^|\/)Takeout\/My Activity\/Gemini Apps\/MyActivity\.json$/i
+const libraryMetadataPattern = /(?:^|\/)library_files\.json$/i
 
 function isConversationJsonPath(path: string): boolean {
   return conversationJsonPattern.test(path.replace(/\\/g, "/"))
@@ -142,7 +145,7 @@ async function extractRelevantZipEntries(file: File): Promise<{ entries: Relevan
         fail(error)
         return
       }
-      if (!isConversationJsonPath(path) && !isGeminiActivityPath(path)) return
+      if (!isConversationJsonPath(path) && !isGeminiActivityPath(path) && !libraryMetadataPattern.test(path)) return
       relevantEntryCount += 1
       if (relevantEntryCount > BRAIN2_ARCHIVE_MAX_RELEVANT_ENTRIES) {
         fail(new Error(`Archive contains more than ${BRAIN2_ARCHIVE_MAX_RELEVANT_ENTRIES} relevant conversation JSON files.`))
@@ -651,6 +654,8 @@ export async function extractConversationJsonBytes(file: File): Promise<Extracte
   if (sourceKind === "chatgpt") {
     const conversations = conversationFiles.flatMap((entry) => parseJsonArray(decoder.decode(entry.bytes), entry.path))
     const metadata = chatGptMetadata(conversations)
+    const libraryMetadata = entries.find((entry) => libraryMetadataPattern.test(entry.path))
+    const codeFiles = libraryMetadata ? selectCodeFilesFromLibraryMetadata(parseJsonArray(decoder.decode(libraryMetadata.bytes), libraryMetadata.path)) : []
     return {
       bytes: combineJsonArrayShards(conversationFiles),
       jsonFileCount: conversationFiles.length,
@@ -659,6 +664,9 @@ export async function extractConversationJsonBytes(file: File): Promise<Extracte
       sourceLabel: "ChatGPT",
       sourceType: "ChatGPT export",
       ...metadata,
+      attachmentCount: codeFiles.length,
+      fileCount: codeFiles.length,
+      codeFiles,
     }
   }
 
@@ -677,4 +685,152 @@ export async function extractConversationJsonBytes(file: File): Promise<Extracte
   }
 
   throw new Error("The export ZIP contains conversation JSON, but it does not look like a supported ChatGPT or Claude export.")
+}
+
+export type ExtractedCodeAttachment = {
+  fileId: string
+  fileName: string
+  sourcePath: string
+  conversationExternalId: string
+  origin: "ATTACHED_FILE" | "NESTED_ARCHIVE_FILE"
+  language: string
+  content: string
+}
+
+const CODE_IMPORT_MAX_BYTES = 64 * 1024 * 1024
+const CODE_IMPORT_MAX_SINGLE_BYTES = 32 * 1024 * 1024
+
+async function* fileChunks(file: File): AsyncGenerator<Uint8Array> {
+  const reader = file.stream().getReader()
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value?.byteLength) yield value
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+async function* byteChunks(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
+  for (let offset = 0; offset < bytes.length; offset += 1024 * 1024) {
+    yield bytes.subarray(offset, offset + 1024 * 1024)
+  }
+}
+
+/** Bounded streaming unzip: only selected members are decompressed or retained. */
+async function selectedZipMembers(
+  chunks: AsyncIterable<Uint8Array>,
+  select: (path: string) => boolean,
+  maxTotalBytes = CODE_IMPORT_MAX_BYTES,
+): Promise<Array<{ path: string; bytes: Uint8Array }>> {
+  const found: Array<{ path: string; bytes: Uint8Array }> = []
+  let pending = 0
+  let finished = false
+  let settled = false
+  let total = 0
+  let entriesSeen = 0
+  return await new Promise((resolve, reject) => {
+    const finish = () => {
+      if (!settled && finished && pending === 0) {
+        settled = true
+        resolve(found.sort((a, b) => a.path.localeCompare(b.path)))
+      }
+    }
+    const fail = (reason: unknown) => {
+      if (settled) return
+      settled = true
+      reject(reason instanceof Error ? reason : new Error(String(reason)))
+    }
+    const zip = new Unzip((entry) => {
+      if (settled) return
+      if (++entriesSeen > BRAIN2_ARCHIVE_MAX_ENTRIES) return fail(new Error("ZIP entry limit exceeded during code discovery."))
+      let path: string
+      try { path = normalizeBrain2ArchiveEntryPath(entry.name) } catch (error) { fail(error); return }
+      if (!select(path)) return
+      pending++
+      const buffers: Uint8Array[] = []
+      let size = 0
+      entry.ondata = (error, chunk, final) => {
+        if (settled) return
+        if (error) return fail(error)
+        if (chunk.length) {
+          size += chunk.length
+          total += chunk.length
+          if (size > CODE_IMPORT_MAX_SINGLE_BYTES || total > maxTotalBytes) {
+            return fail(new Error("Code attachment exceeded bounded extraction budget."))
+          }
+          buffers.push(chunk)
+        }
+        if (!final) return
+        const bytes = new Uint8Array(size)
+        let offset = 0
+        for (const buffer of buffers) { bytes.set(buffer, offset); offset += buffer.length }
+        found.push({ path, bytes })
+        pending--
+        finish()
+      }
+      entry.start()
+    })
+    zip.register(AsyncUnzipInflate)
+    void (async () => {
+      try {
+        for await (const chunk of chunks) {
+          if (settled) return
+          zip.push(chunk, false)
+        }
+        zip.push(new Uint8Array(0), true)
+        finished = true
+        finish()
+      } catch (error) { fail(error) }
+    })()
+  })
+}
+
+/** Historical ChatGPT ZIP -> actual source attachments, without needing a second user upload. */
+export async function extractChatGptCodeAttachments(
+  file: File, manifest: CodeFileMetadata[],
+): Promise<ExtractedCodeAttachment[]> {
+  if (!manifest.length) return []
+  const byFileId = new Map(manifest.map((record) => [record.fileId, record]))
+  const members = await selectedZipMembers(fileChunks(file), (path) => {
+    if (!path.endsWith(".dat")) return false
+    const name = path.split("/").pop() ?? ""
+    return byFileId.has(name.slice(0, -4))
+  })
+  const decoder = new TextDecoder("utf-8", { fatal: true })
+  const files: ExtractedCodeAttachment[] = []
+  for (const member of members) {
+    const name = member.path.split("/").pop() ?? ""
+    const meta = byFileId.get(name.slice(0, -4))
+    if (!meta) continue
+    if (meta.isNestedArchive) {
+      const nested = await selectedZipMembers(byteChunks(member.bytes), (path) => {
+        if (!safeSourcePath(path) || path.endsWith("/")) return false
+        if (!languageForFilename(path)) return false
+        // Android resource XML is source; generated and build output is not.
+        if (path.endsWith(".xml") && !path.startsWith("android/app/src/")) return false
+        return true
+      }, 24 * 1024 * 1024)
+      for (const entry of nested) {
+        try {
+          const content = decoder.decode(entry.bytes)
+          if (!safeCodeContent(content)) continue
+          files.push({ fileId: meta.fileId, fileName: entry.path.split("/").pop() ?? meta.fileName,
+            sourcePath: `${meta.fileName}:${entry.path}`, conversationExternalId: meta.conversationExternalId,
+            origin: "NESTED_ARCHIVE_FILE", language: languageForFilename(entry.path) ?? "unknown", content })
+        } catch { /* Invalid UTF-8 is not source text. */ }
+      }
+      continue
+    }
+    try {
+      const content = decoder.decode(member.bytes)
+      if (!safeCodeContent(content)) continue
+      files.push({ fileId: meta.fileId, fileName: meta.fileName,
+        sourcePath: meta.fileName, conversationExternalId: meta.conversationExternalId,
+        origin: "ATTACHED_FILE", language: languageForFilename(meta.fileName) ?? "unknown", content })
+    } catch { /* Binary attachments are never rendered as source code. */ }
+  }
+  return files.sort((a, b) => a.sourcePath.localeCompare(b.sourcePath) || a.fileId.localeCompare(b.fileId))
 }
