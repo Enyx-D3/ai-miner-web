@@ -4,12 +4,14 @@ import {
   AUTH_COOKIES,
   accessTokenFromRequest,
   authContextFromToken,
+  localDevDemoContextFromRequest,
   refreshSupabaseSession,
   refreshTokenFromRequest,
   sessionCookieOptions,
 } from "@/server/auth/core";
 
 export async function proxy(request: NextRequest) {
+  if (localDevDemoContextFromRequest(request)) return NextResponse.next();
   let context = await authContextFromToken(accessTokenFromRequest(request));
   const refreshed = context ? null : await refreshSupabaseSession(refreshTokenFromRequest(request));
   if (refreshed) context = await authContextFromToken(refreshed.accessToken);

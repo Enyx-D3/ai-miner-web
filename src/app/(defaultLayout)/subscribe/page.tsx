@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PortalButton } from "@/components/billing/BillingActions";
+import { localDevDemoContext } from "@/server/auth/core";
 
-export default function SubscribePage() {
+export default async function SubscribePage() {
+  if (localDevDemoContext((await headers()).get("host"))) redirect("/dashboard");
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-3xl flex-col items-center justify-center px-6 py-20 text-center">
       <div className="mb-4 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[.14em] text-[var(--blue)]">Access required</div>

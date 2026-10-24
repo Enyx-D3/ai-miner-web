@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
@@ -13,6 +14,18 @@ export default function Page() {
   const callbackUrl = internalCallback(searchParams.get("callbackUrl"));
   const error = searchParams.get("error");
   const href = `/api/v1/auth/google?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+
+  useEffect(() => {
+    let active = true;
+    // Local demo accounts do not need an OAuth round trip.
+    fetch("/api/v1/auth/session", { credentials: "same-origin", cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((session: { developmentMode?: boolean } | null) => {
+        if (active && session?.developmentMode) window.location.replace(callbackUrl);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [callbackUrl]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-secondary px-6">

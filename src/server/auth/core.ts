@@ -37,6 +37,23 @@ type CookieReader = { get(name: string): { value: string } | undefined };
 
 const ACTIVE_STATUSES = new Set(["ACTIVE"]);
 
+/** Explicit, loopback-only development identity. Never available in a production build. */
+export function localDevDemoContext(host: string | null): Brain2AuthContext | null {
+  if (process.env.NODE_ENV !== "development" ||
+      process.env.BRAIN2_DEPLOY_ENV === "production" ||
+      process.env.LOCAL_DEMO_MODE !== "1") return null;
+  const hostname = host?.trim().toLowerCase().replace(/:\d+$/, "") || "";
+  if (hostname !== "localhost" && hostname !== "127.0.0.1" && hostname !== "[::1]") return null;
+  return {
+    user: { id: "brain2-local-dev", email: "developer@local.invalid", displayName: "Local Developer", avatarUrl: null },
+    entitlement: { status: "ACTIVE", plan: "local_development", active: true, currentPeriodEnd: null },
+  };
+}
+
+export function localDevDemoContextFromRequest(request: Request | NextRequest): Brain2AuthContext | null {
+  return localDevDemoContext(new URL(request.url).host);
+}
+
 export function authConfigured() {
   return Boolean(
     process.env.AUTH_PROVIDER === "supabase" &&
@@ -220,7 +237,7 @@ export async function authContextFromToken(accessToken: string): Promise<Brain2A
 }
 
 export async function authContextFromRequest(request: Request | NextRequest): Promise<Brain2AuthContext | null> {
-  return authContextFromToken(cookieValueFromRequest(request, AUTH_COOKIES.access) || bearerFromRequest(request));
+  return localDevDemoContextFromRequest(request) || authContextFromToken(cookieValueFromRequest(request, AUTH_COOKIES.access) || bearerFromRequest(request));
 }
 
 export function assertSameOriginMutation(request: Request | NextRequest) {

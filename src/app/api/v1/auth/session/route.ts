@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { authContextFromToken, bearerFromRequest, AUTH_COOKIES, cookieValueFromRequest, refreshSupabaseSession, refreshTokenFromRequest, sessionCookieOptions } from "@/server/auth/session";
+import { authContextFromToken, bearerFromRequest, AUTH_COOKIES, cookieValueFromRequest, localDevDemoContextFromRequest, refreshSupabaseSession, refreshTokenFromRequest, sessionCookieOptions } from "@/server/auth/session";
 
 export async function GET(request: Request) {
+  const demo = localDevDemoContextFromRequest(request);
+  if (demo) return NextResponse.json({ authenticated: true, user: demo.user, entitlement: demo.entitlement, developmentMode: true }, { headers: { "cache-control": "no-store" } });
   const access = cookieValueFromRequest(request, AUTH_COOKIES.access) || bearerFromRequest(request);
   let context = await authContextFromToken(access);
   const refreshed = context ? null : await refreshSupabaseSession(refreshTokenFromRequest(request));

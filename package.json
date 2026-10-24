@@ -7,6 +7,7 @@
   "main": "desktop/electron/main.cjs",
   "scripts": {
     "dev": "next dev --webpack -H 0.0.0.0",
+    "dev:local-demo": "LOCAL_DEMO_MODE=1 next dev --webpack -H 127.0.0.1",
     "dev:turbopack": "next dev",
     "build": "next build --webpack",
     "start": "next start",
@@ -57,6 +58,7 @@
     "test:g12-dependency-security": "node scripts/test-g12-dependency-security.mjs",
     "test:m01-auth": "node scripts/test-m01-auth-foundation.mjs",
     "test:m02-billing": "node scripts/test-m02-billing.mjs",
+    "test:local-dev-access": "node scripts/test-local-dev-access.mjs",
     "check:global-context": "node scripts/check-global-context-gap-fill.mjs",
     "check:global-context-v2": "node scripts/check-global-context-v2.mjs",
     "check:phase2-continuity": "node scripts/check-phase2-continuity.mjs",

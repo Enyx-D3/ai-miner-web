@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { authContextFromToken, bearerFromRequest, AUTH_COOKIES, readUserProfile } from "@/server/auth/session";
+import { authContextFromToken, bearerFromRequest, AUTH_COOKIES, localDevDemoContextFromRequest, readUserProfile } from "@/server/auth/session";
 
 export async function GET(request: Request) {
+  const demo = localDevDemoContextFromRequest(request);
+  if (demo) return NextResponse.json({ user: demo.user, profile: null, entitlement: demo.entitlement, developmentMode: true }, { headers: { "cache-control": "no-store" } });
   const cookie = request.headers.get("cookie") || "";
   const access = cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${AUTH_COOKIES.access}=`))?.split("=").slice(1).join("=") || bearerFromRequest(request);
   const context = await authContextFromToken(decodeURIComponent(access));

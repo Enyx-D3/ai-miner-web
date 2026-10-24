@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { assertSameOriginMutation, authContextFromRequest } from "@/server/auth/core";
+import { assertSameOriginMutation, authContextFromRequest, localDevDemoContextFromRequest } from "@/server/auth/core";
 import { assertRateLimit, createCheckoutUrl } from "@/server/billing/core";
 
 export async function POST(request: Request) {
+  if (localDevDemoContextFromRequest(request)) return NextResponse.json({ error: "Stripe checkout is disabled in local demo mode." }, { status: 403 });
   try {
     assertSameOriginMutation(request);
     const context = await authContextFromRequest(request);

@@ -1,10 +1,12 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { authContextFromCookieReader } from "@/server/auth/core";
+import { authContextFromCookieReader, localDevDemoContext } from "@/server/auth/core";
 
 export * from "@/server/auth/core";
 
 export async function requireUser() {
+  const demo = localDevDemoContext((await headers()).get("host"));
+  if (demo) return demo;
   const context = await authContextFromCookieReader(await cookies());
   if (!context) redirect("/login");
   return context;
