@@ -1,5 +1,5 @@
 /** Pure, versioned discovery rules. They do not use an LLM or runtime clock. */
-export const CODE_REGISTRY_RULE_VERSION = "B2_CODE_REGISTRY_V1";
+export const CODE_REGISTRY_RULE_VERSION = "B2_CODE_REGISTRY_V2";
 
 export type CodeOrigin = "CHAT_FENCE" | "ATTACHED_FILE" | "NESTED_ARCHIVE_FILE";
 
@@ -64,6 +64,44 @@ const SECRET_FILE = /(?:^|\/)(?:\.env(?:\.|$)|key\.properties$|[^/]*\.(?:jks|key
 const CODE_SHAPE = /\b(?:class|interface|function|const|let|var|import|export|return|def|async|await|public|private|static|SELECT|CREATE|package|fun|void|#include)\b|[{};]\s*$/m;
 const FENCE = /```([^\r\n`]*)\r?\n([\s\S]*?)\r?\n?```/g;
 
+function confirmedCodePath(value: string): string | null {
+  const name = value.trim().replace(/^[`"']+|[`"']+$/g, "").replace(/^\.\//, "");
+  if (name.length > 240 || /[<>\u0000-\u001f]/.test(name)) return null;
+  return name.includes(".") && safeSourcePath(name) && languageForFilename(name) ? name.replace(/\\/g, "/") : null;
+}
+
+/** A chat excerpt is a named file only with explicit, nearby path evidence. */
+export function sourcePathForFence(header: string, precedingText: string, code: string): string | null {
+  const attribute = header.match(/(?:^|\s|\{)(?:file(?:name)?|path|title)\s*=\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`|([^\s}\]]+))/i);
+  if (attribute) {
+    const path = confirmedCodePath(attribute[1] || attribute[2] || attribute[3] || attribute[4]);
+    if (path) return path;
+  }
+  const headerToken = header.trim().split(/\s+/)[0] ?? "";
+  const direct = confirmedCodePath(headerToken) || confirmedCodePath(headerToken.replace(/^[a-z+#]+:/i, ""));
+  if (direct) return direct;
+
+  // Do not borrow a filename from an unrelated paragraph or a previous fence.
+  const lines = precedingText.slice(-400).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const nearby = (lines.at(-1) || "").replace(/^#{1,6}\s*/, "").replace(/\*\*/g, "").replace(/^[-*]\s*/, "").trim();
+  const labeled = nearby.match(/^(?:file(?:name|\s+path)?|path|source)\s*[:=]\s*(?:`([^`]+)`|"([^"]+)"|'([^']+)'|([^\s]+))\s*[:.]?$/i);
+  if (labeled) {
+    const path = confirmedCodePath(labeled[1] || labeled[2] || labeled[3] || labeled[4]);
+    if (path) return path;
+  }
+  const standalone = nearby.match(/^`([^`]+)`\s*:?$/);
+  if (standalone) {
+    const path = confirmedCodePath(standalone[1]);
+    if (path) return path;
+  }
+  const plainHeadingPath = confirmedCodePath(nearby.replace(/:$/, ""));
+  if (plainHeadingPath) return plainHeadingPath;
+
+  const firstLine = code.split(/\r?\n/, 1)[0] ?? "";
+  const comment = firstLine.match(/^\s*(?:\/\/|#|\/\*|<!--)\s*(?:file(?:name)?|path)\s*[:=]\s*(\S+?)(?:\s*\*\/|\s*-->)?\s*$/i);
+  return comment ? confirmedCodePath(comment[1]) : null;
+}
+
 export function safeSourcePath(name: string): boolean {
   const normalized = name.replace(/\\/g, "/").trim();
   return Boolean(normalized) && !normalized.startsWith("/") && !/^[a-z]:\//i.test(normalized)
@@ -111,17 +149,19 @@ export function codeFromFences(input: {
     let index = 0;
     for (const match of message.text.matchAll(FENCE)) {
       const ordinal = ++index;
-      const header = match[1].trim().split(/\s+/)[0].toLowerCase();
+      const rawHeader = match[1].trim();
+      const header = (rawHeader.split(/\s+/)[0] || "").toLowerCase();
       const content = match[2].trim();
       if (!safeCodeContent(content) || ["mermaid", "text", "plaintext", "markdown", "md"].includes(header)) continue;
       if (!header && !CODE_SHAPE.test(content)) continue;
-      const language = EXT_LANG[header] ?? ({ typescript: "typescript", javascript: "javascript", python: "python", kotlin: "kotlin", rust: "rust", shell: "shell", bash: "shell", jsonc: "json" } as Record<string, string>)[header] ?? (header || "unknown");
+      const sourcePath = sourcePathForFence(rawHeader, message.text.slice(0, match.index), content);
+      const language = (sourcePath ? languageForFilename(sourcePath) : null) ?? EXT_LANG[header] ?? ({ typescript: "typescript", javascript: "javascript", python: "python", kotlin: "kotlin", rust: "rust", shell: "shell", bash: "shell", jsonc: "json" } as Record<string, string>)[header] ?? (header || "unknown");
       const extension = Object.entries(EXT_LANG).find(([, lang]) => lang === language)?.[0] ?? "txt";
       result.push({
         origin: "CHAT_FENCE", provider: input.provider, projectId: input.projectId,
         projectName: input.projectName, conversationExternalId: input.conversationExternalId,
         conversationTitle: input.conversationTitle, sourceMessageId: message.externalId,
-        sourceFileId: "", sourcePath: "", fileName: `snippet-${ordinal}.${extension}`,
+        sourceFileId: "", sourcePath: sourcePath || "", fileName: sourcePath?.split("/").pop() || `unnamed-${ordinal}.${extension}`,
         language, content,
       });
     }

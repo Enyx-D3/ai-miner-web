@@ -112,8 +112,17 @@ export async function listCodeRecords(): Promise<CodeRecord[]> {
   try {
     return await new Promise<CodeRecord[]>((resolve, reject) => {
       const request = db.transaction("records", "readonly").objectStore("records").getAll();
-      request.onsuccess = () => resolve((request.result as CodeRecord[]).sort((a, b) =>
-        a.projectName.localeCompare(b.projectName) || a.fileName.localeCompare(b.fileName) || a.id.localeCompare(b.id)));
+      request.onsuccess = () => {
+        const all = request.result as CodeRecord[];
+        // Reimporting an archive upgrades fence names without deleting old evidence.
+        // Hide only older records whose exact message and bytes were rediscovered.
+        const sourceKey = (row: CodeRecord) => row.origin === "CHAT_FENCE"
+          ? JSON.stringify([row.provider, row.origin, row.conversationExternalId, row.sourceMessageId, row.hash])
+          : JSON.stringify([row.provider, row.origin, row.conversationExternalId, row.sourceFileId, row.sourcePath, row.hash]);
+        const upgraded = new Set(all.filter((row) => row.ruleVersion === CODE_REGISTRY_RULE_VERSION).map(sourceKey));
+        resolve(all.filter((row) => row.ruleVersion === CODE_REGISTRY_RULE_VERSION || !upgraded.has(sourceKey(row)))
+          .sort((a, b) => a.projectName.localeCompare(b.projectName) || a.fileName.localeCompare(b.fileName) || a.id.localeCompare(b.id)));
+      };
       request.onerror = () => reject(request.error ?? new Error("Could not list code records."));
     });
   } finally {
