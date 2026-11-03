@@ -18,6 +18,9 @@ req(sideHtml.includes('panelConnection')&&sideHtml.includes('panelCapture'),'two
 req(side.includes('chrome.permissions.request'),'connection requests exact site permission');
 req(side.includes('BRAIN2_CONFIG_ORIGIN'),'permission continues into bridge config');
 req(side.includes('waitForHandshake'),'connection waits for real nonce handshake');
+req(side.includes('isProviderOrigin(url.origin)'),'side panel rejects provider tabs as Brain2 origins');
+req(side.includes('BRAIN2_DISCONNECT_WEBSITE')&&side.includes('DEFAULT_ORIGIN'),'bad saved provider origin is cleared before opening Brain2');
+req(sw.includes('isProviderOrigin(url.origin)'),'service worker rejects provider origins at config boundary');
 req(side.indexOf('chrome.permissions.request')>=0&&side.indexOf('BRAIN2_CONFIG_ORIGIN')>side.indexOf('chrome.permissions.request'),'one-click permission continuation invariant');
 req(sideHtml.includes('id="connectionAction"'),'single connection action button');
 req(!sideHtml.includes('id="connect"')&&!sideHtml.includes('id="disconnect"'),'Connect and Disconnect must never coexist as separate buttons');

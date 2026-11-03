@@ -76,9 +76,28 @@
             timestampSource: t.source
           });
         }
+        if (!items.length) {
+          const headings = [...documentLike.querySelectorAll("h4")]
+            .filter((node) => ["You said:", "ChatGPT said:"].includes(helpers.cleanText(node.textContent)));
+          for (const heading of headings) {
+            const label = helpers.cleanText(heading.textContent);
+            const role = label === "You said:" ? "user" : "assistant";
+            const root = heading.parentElement;
+            const text = helpers.cleanText(root?.innerText || root?.textContent).replace(label, "").trim();
+            if (text.length < 2) continue;
+            const t = helpers.timeFrom(root);
+            items.push({
+              role,
+              text,
+              providerNodeId: helpers.idFrom(root) || helpers.idFrom(heading),
+              occurredAt: t.value,
+              timestampSource: t.source
+            });
+          }
+        }
         return {
           turns: helpers.uniqueTurns(items),
-          selectorMode: roots.length ? "chatgpt-semantic-turns" : "chatgpt-none"
+          selectorMode: roots.length ? "chatgpt-semantic-turns" : items.length ? "chatgpt-heading-turns" : "chatgpt-none"
         };
       }
     },

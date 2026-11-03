@@ -37,4 +37,27 @@ for (const id of ["chatgpt", "claude", "gemini"]) {
   req(registry.adapters[id].isGenerating(invisibleDocument, helpers) === false, `${id} idle state`);
 }
 
+const headingHelpers = {
+  cleanText(value) { return String(value || "").trim(); },
+  anyVisible: helpers.anyVisible,
+  timeFrom() { return { value: undefined, source: "unknown" }; },
+  idFrom() { return undefined; },
+  documentOrder(items) { return items; },
+  uniqueTurns(items) { return items.map((item, sequence) => ({ ...item, sequence })); }
+};
+const userRoot = { innerText: "You said:\nhello", textContent: "You said:\nhello" };
+const assistantRoot = { innerText: "ChatGPT said:\n\nworld", textContent: "ChatGPT said:\n\nworld" };
+const headingDocument = {
+  querySelectorAll(selector) {
+    if (selector !== "h4") return [];
+    return [
+      { textContent: "You said:", parentElement: userRoot },
+      { textContent: "ChatGPT said:", parentElement: assistantRoot }
+    ];
+  }
+};
+const headingTurns = registry.adapters.chatgpt.extractTurns(headingDocument, headingHelpers);
+req(headingTurns.selectorMode === "chatgpt-heading-turns", "chatgpt heading fallback selector");
+req(headingTurns.turns.length === 2 && headingTurns.turns[0].role === "user" && headingTurns.turns[1].role === "assistant", "chatgpt heading fallback turns");
+
 console.log("Brain2 extension provider adapter v2 deterministic contract PASS");
